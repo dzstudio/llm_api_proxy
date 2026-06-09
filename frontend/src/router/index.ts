@@ -31,6 +31,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/ApiKeys.vue'),
         meta: { title: 'API Key管理 - LLM API Proxy' },
       },
+      {
+        path: 'models',
+        name: 'Models',
+        component: () => import('@/views/Models.vue'),
+        meta: { title: '模型管理 - LLM API Proxy' },
+      },
     ],
   },
 ]
