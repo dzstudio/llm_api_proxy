@@ -10,6 +10,7 @@ import modelRoutes from './routes/model.js';
 import llmRoutes from './routes/llm.js';
 import conversationRoutes from './routes/conversation.js';
 import reportRoutes from './routes/report.js';
+import reviewRoutes from './routes/review.js';
 import { seedAdmin } from './utils/seed.js';
 import { startScheduler } from './scheduler/dailyReport.js';
 
@@ -28,6 +29,7 @@ app.use('/api/models', modelRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/conversations', conversationRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

@@ -3,6 +3,7 @@ import { ref, reactive, onMounted, watch } from 'vue'
 import { conversationApi, type ConversationItem, type ConversationDetail, type ConversationStats } from '@/api/conversation'
 import { userApi, type UserItem } from '@/api/user'
 import { modelApi, type ModelItem } from '@/api/model'
+import { reviewApi, type ReviewItem } from '@/api/review'
 
 const conversations = ref<ConversationItem[]>([])
 const loading = ref(false)
@@ -18,6 +19,9 @@ const detailLoading = ref(false)
 
 const users = ref<UserItem[]>([])
 const models = ref<ModelItem[]>([])
+const review = ref<ReviewItem | null>(null)
+const evaluating = ref(false)
+const reviewError = ref('')
 
 const filters = reactive({
   userId: undefined as number | undefined,
@@ -70,19 +74,51 @@ async function fetchModels() {
   } catch { /* non-critical */ }
 }
 
+async function fetchReview(conversationId: number) {
+  try {
+    const res = await reviewApi.getByConversation(conversationId)
+    if (res.data.code === 0) review.value = res.data.data
+  } catch { review.value = null }
+}
+
 async function openDetail(conv: ConversationItem) {
   showDetail.value = true
   detailLoading.value = true
   detail.value = null
+  review.value = null
+  reviewError.value = ''
   try {
     const res = await conversationApi.detail(conv.id)
-    if (res.data.code === 0) detail.value = res.data.data
+    if (res.data.code === 0) {
+      detail.value = res.data.data
+      fetchReview(conv.id)
+    }
   } catch (err: any) {
     error.value = err.response?.data?.message || '加载详情失败'
     showDetail.value = false
   } finally {
     detailLoading.value = false
   }
+}
+
+async function handleEvaluate() {
+  if (!detail.value) return
+  evaluating.value = true
+  reviewError.value = ''
+  try {
+    const res = await reviewApi.evaluate(detail.value.id)
+    if (res.data.code === 0) review.value = res.data.data
+  } catch (err: any) {
+    reviewError.value = err.response?.data?.message || '评价失败'
+  } finally {
+    evaluating.value = false
+  }
+}
+
+function getScoreColor(score: number) {
+  if (score >= 80) return 'text-emerald-600'
+  if (score >= 60) return 'text-amber-600'
+  return 'text-red-600'
 }
 
 function applyFilters() {
@@ -201,6 +237,7 @@ onMounted(() => {
               <th class="px-6 py-3 text-xs font-medium text-slate-500">模型</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">消息数</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">Token</th>
+              <th class="px-6 py-3 text-xs font-medium text-slate-500">评分</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">时间</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">操作</th>
             </tr>
@@ -214,13 +251,14 @@ onMounted(() => {
               </td>
               <td class="px-6 py-3 text-slate-500">{{ c.messageCount }}</td>
               <td class="px-6 py-3 font-mono text-xs text-slate-500">{{ formatTokens(c.tokenCount) }}</td>
+              <td class="px-6 py-3 text-xs text-slate-400">-</td>
               <td class="px-6 py-3 text-xs text-slate-400">{{ formatTime(c.createTime) }}</td>
               <td class="px-6 py-3">
                 <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-[#005d9c] hover:bg-[#005d9c]/10" @click="openDetail(c)">查看</button>
               </td>
             </tr>
             <tr v-if="conversations.length === 0 && !loading">
-              <td colspan="7" class="px-6 py-12 text-center text-sm text-slate-400">暂无对话记录</td>
+              <td colspan="8" class="px-6 py-12 text-center text-sm text-slate-400">暂无对话记录</td>
             </tr>
           </tbody>
         </table>
@@ -323,6 +361,58 @@ onMounted(() => {
                 <span class="text-xs text-slate-400">{{ formatTokens(msg.tokens) }} tokens</span>
               </div>
               <pre class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 font-sans">{{ msg.content }}</pre>
+            </div>
+          </div>
+
+          <!-- Review Section -->
+          <div class="mt-5 border-t border-slate-100 pt-5">
+            <div class="mb-3 flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-slate-900">Prompt 评价</h4>
+              <button
+                v-if="!review"
+                :disabled="evaluating"
+                class="rounded-lg bg-[#0ea5e9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0284c7] disabled:opacity-50"
+                @click="handleEvaluate"
+              >
+                {{ evaluating ? '评价中...' : '开始评价' }}
+              </button>
+              <button
+                v-else
+                class="rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-200"
+                :disabled="evaluating"
+                @click="handleEvaluate"
+              >
+                {{ evaluating ? '重新评价中...' : '重新评价' }}
+              </button>
+            </div>
+
+            <div v-if="reviewError" class="mb-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{{ reviewError }}</div>
+
+            <div v-if="review" class="space-y-4">
+              <div class="flex items-center gap-3">
+                <span :class="['text-3xl font-bold', getScoreColor(review.score)]">{{ review.score }}</span>
+                <span class="text-xs text-slate-500">总分 / 100</span>
+                <span class="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">评价模型：{{ review.reviewModelName }}</span>
+              </div>
+
+              <div v-if="review.strengths">
+                <h5 class="mb-1 text-xs font-semibold text-emerald-600">优点</h5>
+                <p class="text-sm leading-relaxed text-slate-600">{{ review.strengths }}</p>
+              </div>
+
+              <div v-if="review.weaknesses">
+                <h5 class="mb-1 text-xs font-semibold text-amber-600">缺点</h5>
+                <p class="text-sm leading-relaxed text-slate-600">{{ review.weaknesses }}</p>
+              </div>
+
+              <div v-if="review.suggestions">
+                <h5 class="mb-1 text-xs font-semibold text-[#005d9c]">改进建议</h5>
+                <p class="text-sm leading-relaxed text-slate-600">{{ review.suggestions }}</p>
+              </div>
+            </div>
+
+            <div v-if="!review && !reviewError" class="text-sm text-slate-400">
+              点击「开始评价」使用评价模型对该对话的用户 Prompt 进行 AI 评分
             </div>
           </div>
         </template>
