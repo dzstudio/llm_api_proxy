@@ -34,3 +34,12 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
 
   next();
 }
+
+export function adminGuard(req: Request, res: Response, next: NextFunction) {
+  const role = (req as any).role;
+  if (role !== 'ADMIN') {
+    res.status(403).json({ code: 403, message: '无权限，仅管理员可操作', data: null });
+    return;
+  }
+  next();
+}

@@ -19,6 +19,12 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/Dashboard.vue'),
         meta: { title: 'Dashboard - LLM API Proxy' },
       },
+      {
+        path: 'employees',
+        name: 'Employees',
+        component: () => import('@/views/Employees.vue'),
+        meta: { title: '员工管理 - LLM API Proxy' },
+      },
     ],
   },
 ]
