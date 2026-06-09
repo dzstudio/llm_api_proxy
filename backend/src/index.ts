@@ -9,7 +9,9 @@ import apiKeyRoutes from './routes/apiKey.js';
 import modelRoutes from './routes/model.js';
 import llmRoutes from './routes/llm.js';
 import conversationRoutes from './routes/conversation.js';
+import reportRoutes from './routes/report.js';
 import { seedAdmin } from './utils/seed.js';
+import { startScheduler } from './scheduler/dailyReport.js';
 
 const app = express();
 
@@ -25,6 +27,7 @@ app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/models', modelRoutes);
 app.use('/api/llm', llmRoutes);
 app.use('/api/conversations', conversationRoutes);
+app.use('/api/reports', reportRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -39,6 +42,7 @@ async function start() {
   await seedAdmin();
   app.listen(config.port, () => {
     console.log(`[LLM API Proxy] Server running on http://localhost:${config.port}`);
+    startScheduler();
   });
 }
 
