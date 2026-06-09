@@ -77,6 +77,15 @@ export async function forwardToProvider(model: any, body: any) {
   }
 }
 
+function cleanUserPrompt(content: string): string {
+  return content
+    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
+    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
+    .replace(/<user-prompt-submit-hook>[\s\S]*?<\/user-prompt-submit-hook>/g, '')
+    .replace(/<system-reminder>[\s\S]*$/g, '')
+    .trim();
+}
+
 export async function logConversation(
   userId: number,
   modelId: number,
@@ -85,13 +94,17 @@ export async function logConversation(
   assistantContent: string,
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number } | null,
 ) {
+  // Only record actual user-entered prompts (role=user), skip system/tool messages
+  const userMessages = messages.filter(m => m.role === 'user');
+  if (userMessages.length === 0 && !assistantContent) return;
+
   const promptTokens = usage?.prompt_tokens
-    || messages.reduce((sum, m) => sum + estimateTokens(m.content || ''), 0);
+    || userMessages.reduce((sum, m) => sum + estimateTokens(m.content || ''), 0);
   const completionTokens = usage?.completion_tokens || estimateTokens(assistantContent);
   const totalTokens = usage?.total_tokens || (promptTokens + completionTokens);
 
-  const firstUserMsg = messages.find(m => m.role === 'user');
-  const title = (firstUserMsg?.content || 'New Conversation').slice(0, 100);
+  const firstClean = cleanUserPrompt(userMessages[0]?.content || '');
+  const title = firstClean.slice(0, 100) || 'New Conversation';
 
   let conversation;
   if (sessionId) {
@@ -113,31 +126,39 @@ export async function logConversation(
     });
   }
 
-  for (const msg of messages) {
+  // Only log cleaned user messages (skip system/tool/assistant messages from provider request)
+  for (const msg of userMessages) {
+    const cleaned = cleanUserPrompt(msg.content || '');
+    if (!cleaned) continue;
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        role: msg.role,
-        content: msg.content || '',
-        tokens: estimateTokens(msg.content || ''),
+        role: 'user',
+        content: cleaned,
+        tokens: estimateTokens(cleaned),
       },
     });
   }
 
-  await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      role: 'assistant',
-      content: assistantContent,
-      tokens: completionTokens,
-    },
-  });
+  // Log assistant response
+  if (assistantContent) {
+    await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        role: 'assistant',
+        content: assistantContent,
+        tokens: completionTokens,
+      },
+    });
+  }
+
+  const loggedMsgCount = userMessages.filter(m => cleanUserPrompt(m.content || '')).length + (assistantContent ? 1 : 0);
 
   await prisma.conversation.update({
     where: { id: conversation.id },
     data: {
       tokenCount: conversation.tokenCount + totalTokens,
-      messageCount: conversation.messageCount + messages.length + 1,
+      messageCount: conversation.messageCount + loggedMsgCount,
       title: conversation.title || title,
     },
   });

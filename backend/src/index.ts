@@ -8,6 +8,7 @@ import userRoutes from './routes/user.js';
 import apiKeyRoutes from './routes/apiKey.js';
 import modelRoutes from './routes/model.js';
 import llmRoutes from './routes/llm.js';
+import conversationRoutes from './routes/conversation.js';
 import { seedAdmin } from './utils/seed.js';
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/api-keys', apiKeyRoutes);
 app.use('/api/models', modelRoutes);
 app.use('/api/llm', llmRoutes);
+app.use('/api/conversations', conversationRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {

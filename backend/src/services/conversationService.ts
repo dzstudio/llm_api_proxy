@@ -1,0 +1,161 @@
+import prisma from '../models/prisma.js';
+
+interface ListQuery {
+  userId?: number;
+  modelId?: number;
+  keyword?: string;
+  startDate?: string;
+  endDate?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+const USER_SELECT = { id: true, username: true, realName: true };
+const MODEL_SELECT = { id: true, name: true, modelName: true, provider: true };
+
+export async function listConversations(query: ListQuery) {
+  const { userId, modelId, keyword, startDate, endDate } = query;
+  const page = Math.max(1, query.page || 1);
+  const pageSize = Math.min(100, Math.max(1, query.pageSize || 20));
+
+  const where: any = {};
+
+  if (userId) where.userId = userId;
+  if (modelId) where.modelId = modelId;
+
+  if (startDate || endDate) {
+    where.createTime = {};
+    if (startDate) where.createTime.gte = new Date(startDate);
+    if (endDate) where.createTime.lte = new Date(endDate + 'T23:59:59.999Z');
+  }
+
+  if (keyword) {
+    where.title = { contains: keyword };
+  }
+
+  const [list, total] = await Promise.all([
+    prisma.conversation.findMany({
+      where,
+      include: {
+        user: { select: USER_SELECT },
+        model: { select: MODEL_SELECT },
+      },
+      orderBy: { createTime: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+    prisma.conversation.count({ where }),
+  ]);
+
+  return {
+    list: list.map(c => ({
+      id: c.id,
+      userId: c.userId,
+      username: c.user.realName || c.user.username,
+      modelId: c.modelId,
+      modelName: c.model?.name || '-',
+      title: c.title,
+      tokenCount: c.tokenCount,
+      messageCount: c.messageCount,
+      createTime: c.createTime,
+      updateTime: c.updateTime,
+    })),
+    total,
+    page,
+    pageSize,
+  };
+}
+
+export async function getConversationDetail(id: number) {
+  const conversation = await prisma.conversation.findUnique({
+    where: { id },
+    include: {
+      user: { select: USER_SELECT },
+      model: { select: MODEL_SELECT },
+      messages: {
+        orderBy: { createTime: 'asc' },
+      },
+    },
+  });
+
+  if (!conversation) return null;
+
+  return {
+    id: conversation.id,
+    userId: conversation.userId,
+    username: conversation.user.realName || conversation.user.username,
+    modelId: conversation.modelId,
+    modelName: conversation.model?.name || '-',
+    provider: conversation.model?.provider || '-',
+    title: conversation.title,
+    sessionId: conversation.sessionId,
+    tokenCount: conversation.tokenCount,
+    messageCount: conversation.messageCount,
+    cost: conversation.cost,
+    createTime: conversation.createTime,
+    updateTime: conversation.updateTime,
+    messages: conversation.messages.map(m => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      tokens: m.tokens,
+      createTime: m.createTime,
+    })),
+  };
+}
+
+export async function getConversationStats() {
+  const [totalConversations, totalTokens, totalMessages] = await Promise.all([
+    prisma.conversation.count(),
+    prisma.conversation.aggregate({ _sum: { tokenCount: true } }),
+    prisma.conversation.aggregate({ _sum: { messageCount: true } }),
+  ]);
+
+  // Users who use the gateway most
+  const topUsers = await prisma.conversation.groupBy({
+    by: ['userId'],
+    _count: { id: true },
+    _sum: { tokenCount: true },
+    orderBy: { _count: { id: 'desc' } },
+    take: 10,
+  });
+
+  const userIds = topUsers.map(u => u.userId);
+  const users = await prisma.sysUser.findMany({
+    where: { id: { in: userIds } },
+    select: USER_SELECT,
+  });
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  // Model usage distribution
+  const modelUsage = await prisma.conversation.groupBy({
+    by: ['modelId'],
+    _count: { id: true },
+    _sum: { tokenCount: true },
+  });
+
+  const modelIds = modelUsage.filter(m => m.modelId).map(m => m.modelId!);
+  const models = await prisma.sysModel.findMany({
+    where: { id: { in: modelIds } },
+    select: MODEL_SELECT,
+  });
+  const modelMap = new Map(models.map(m => [m.id, m]));
+
+  return {
+    totalConversations,
+    totalTokens: totalTokens._sum.tokenCount || 0,
+    totalMessages: totalMessages._sum.messageCount || 0,
+    topUsers: topUsers.map(u => ({
+      userId: u.userId,
+      username: userMap.get(u.userId)?.realName || userMap.get(u.userId)?.username || '-',
+      conversationCount: u._count.id,
+      tokenCount: u._sum.tokenCount || 0,
+    })),
+    modelUsage: modelUsage.filter(m => m.modelId).map(m => ({
+      modelId: m.modelId,
+      modelName: modelMap.get(m.modelId!)?.name || '-',
+      conversationCount: m._count.id,
+      tokenCount: m._sum.tokenCount || 0,
+    })),
+  };
+}
