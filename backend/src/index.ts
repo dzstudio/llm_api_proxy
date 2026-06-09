@@ -5,6 +5,7 @@ import { authMiddleware } from './middleware/auth.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
+import apiKeyRoutes from './routes/apiKey.js';
 import { seedAdmin } from './utils/seed.js';
 
 const app = express();
@@ -17,6 +18,7 @@ app.use(authMiddleware);
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/api-keys', apiKeyRoutes);
 
 // Health check
 app.get('/api/health', (_req, res) => {
