@@ -189,6 +189,41 @@ export async function getReviewByConversation(conversationId: number) {
   };
 }
 
+export async function getReviewStats() {
+  const [totalReviews, aggregation] = await Promise.all([
+    prisma.promptReview.count(),
+    prisma.promptReview.aggregate({
+      _avg: { score: true },
+      _count: true,
+    }),
+  ]);
+
+  // Score distribution
+  const allScores = await prisma.promptReview.findMany({
+    select: { score: true, conversationId: true, conversation: { select: { user: { select: { realName: true, username: true } } } } },
+    orderBy: { score: 'desc' },
+  });
+
+  const excellentCount = allScores.filter(r => r.score && r.score >= 80).length;
+  const goodCount = allScores.filter(r => r.score && r.score >= 60 && r.score < 80).length;
+  const poorCount = allScores.filter(r => r.score && r.score < 60).length;
+
+  return {
+    totalReviews,
+    avgScore: Math.round(aggregation._avg.score || 0),
+    scoreDistribution: {
+      excellent: excellentCount,
+      good: goodCount,
+      poor: poorCount,
+    },
+    topRated: allScores.slice(0, 5).map(r => ({
+      conversationId: r.conversationId,
+      username: r.conversation.user.realName || r.conversation.user.username,
+      score: r.score,
+    })),
+  };
+}
+
 export async function listReviews(page = 1, pageSize = 20) {
   const [list, total] = await Promise.all([
     prisma.promptReview.findMany({

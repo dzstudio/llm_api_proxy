@@ -36,6 +36,15 @@ export async function getByConversation(req: Request, res: Response) {
   }
 }
 
+export async function stats(_req: Request, res: Response) {
+  try {
+    const data = await reviewService.getReviewStats();
+    res.json({ code: 0, message: 'success', data });
+  } catch (err: any) {
+    res.status(500).json({ code: 500, message: err.message, data: null });
+  }
+}
+
 export async function list(_req: Request, res: Response) {
   try {
     const page = parseInt(String(_req.query.page || '1'));

@@ -7,6 +7,7 @@ const router = Router();
 router.use(adminGuard);
 
 router.get('/', reviewController.list);
+router.get('/stats', reviewController.stats);
 router.post('/evaluate/:conversationId', reviewController.evaluate);
 router.get('/:conversationId', reviewController.getByConversation);
 
