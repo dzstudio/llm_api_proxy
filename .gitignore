@@ -1,11 +1,10 @@
 # Dependencies
 node_modules/
-frontend/node_modules/
 
 # Build output
-frontend/dist/
+dist/
 backend/dist/
-backend/target/
+frontend/dist/
 
 # IDE
 .idea/
@@ -15,10 +14,14 @@ backend/target/
 
 # Database
 data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
 
 # Logs
-logs/*.log
+logs/
+*.log
 
 # Environment
 .env
-.env.local
+.env.*
