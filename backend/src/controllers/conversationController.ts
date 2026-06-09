@@ -5,14 +5,28 @@ export async function list(req: Request, res: Response) {
   try {
     const { userId, modelId, keyword, startDate, endDate, page, pageSize } = req.query;
 
+    const parsedUserId = userId ? parseInt(String(userId)) : undefined;
+    const parsedModelId = modelId ? parseInt(String(modelId)) : undefined;
+    const parsedPage = page ? parseInt(String(page)) : undefined;
+    const parsedPageSize = pageSize ? parseInt(String(pageSize)) : undefined;
+
+    if (parsedUserId !== undefined && isNaN(parsedUserId)) {
+      res.status(400).json({ code: 400, message: '参数错误：userId 格式不正确', data: null });
+      return;
+    }
+    if (parsedModelId !== undefined && isNaN(parsedModelId)) {
+      res.status(400).json({ code: 400, message: '参数错误：modelId 格式不正确', data: null });
+      return;
+    }
+
     const result = await conversationService.listConversations({
-      userId: userId ? parseInt(String(userId)) : undefined,
-      modelId: modelId ? parseInt(String(modelId)) : undefined,
+      userId: parsedUserId,
+      modelId: parsedModelId,
       keyword: keyword ? String(keyword) : undefined,
       startDate: startDate ? String(startDate) : undefined,
       endDate: endDate ? String(endDate) : undefined,
-      page: page ? parseInt(String(page)) : undefined,
-      pageSize: pageSize ? parseInt(String(pageSize)) : undefined,
+      page: parsedPage,
+      pageSize: parsedPageSize,
     });
 
     res.json({ code: 0, message: 'success', data: result });

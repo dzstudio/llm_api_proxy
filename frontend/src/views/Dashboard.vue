@@ -36,7 +36,9 @@ const iconPaths: Record<string, string> = {
 }
 
 onMounted(async () => {
-  if (!authStore.userInfo) await authStore.fetchUserInfo()
+  try {
+    if (!authStore.userInfo) await authStore.fetchUserInfo()
+  } catch { /* user info fetch is non-critical for dashboard */ }
 
   const [convRes, reportRes, reviewRes] = await Promise.allSettled([
     conversationApi.stats(),

@@ -66,10 +66,24 @@ export async function chatCompletions(req: Request, res: Response) {
       res.setHeader('Connection', 'keep-alive');
       res.setHeader('X-Accel-Buffering', 'no');
 
-      const reader = response.body!.getReader();
+      if (!response.body) {
+        res.status(502).json({ code: 502, message: 'Upstream response body is empty', data: null });
+        return;
+      }
+
+      const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let fullContent = '';
       let buffer = '';
+
+      // Abort upstream read if client disconnects
+      const abortController = new AbortController();
+      req.on('close', () => {
+        if (!res.writableEnded) {
+          abortController.abort();
+          reader.cancel().catch(() => {});
+        }
+      });
 
       try {
         while (true) {
@@ -92,13 +106,17 @@ export async function chatCompletions(req: Request, res: Response) {
             }
           }
 
-          res.write(chunk);
+          if (!res.writableEnded) {
+            res.write(chunk);
+          }
         }
       } finally {
         reader.releaseLock();
       }
 
-      res.end();
+      if (!res.writableEnded) {
+        res.end();
+      }
 
       gatewayService.logConversation(
         keyRecord.userId,
@@ -124,7 +142,7 @@ export async function chatCompletions(req: Request, res: Response) {
       res.json(data);
     }
   } catch (err: any) {
-    if (err.message === 'Request timeout') {
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
       res.status(504).json({ code: 504, message: 'Gateway request timeout', data: null });
     } else {
       console.error('[Gateway] Error:', err);

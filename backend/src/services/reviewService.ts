@@ -190,23 +190,20 @@ export async function getReviewByConversation(conversationId: number) {
 }
 
 export async function getReviewStats() {
-  const [totalReviews, aggregation] = await Promise.all([
+  const [totalReviews, aggregation, excellentCount, goodCount, poorCount, topRated] = await Promise.all([
     prisma.promptReview.count(),
     prisma.promptReview.aggregate({
       _avg: { score: true },
-      _count: true,
+    }),
+    prisma.promptReview.count({ where: { score: { gte: 80 } } }),
+    prisma.promptReview.count({ where: { score: { gte: 60, lt: 80 } } }),
+    prisma.promptReview.count({ where: { score: { lt: 60 } } }),
+    prisma.promptReview.findMany({
+      select: { score: true, conversationId: true, conversation: { select: { user: { select: { realName: true, username: true } } } } },
+      orderBy: { score: 'desc' },
+      take: 5,
     }),
   ]);
-
-  // Score distribution
-  const allScores = await prisma.promptReview.findMany({
-    select: { score: true, conversationId: true, conversation: { select: { user: { select: { realName: true, username: true } } } } },
-    orderBy: { score: 'desc' },
-  });
-
-  const excellentCount = allScores.filter(r => r.score && r.score >= 80).length;
-  const goodCount = allScores.filter(r => r.score && r.score >= 60 && r.score < 80).length;
-  const poorCount = allScores.filter(r => r.score && r.score < 60).length;
 
   return {
     totalReviews,
@@ -216,15 +213,16 @@ export async function getReviewStats() {
       good: goodCount,
       poor: poorCount,
     },
-    topRated: allScores.slice(0, 5).map(r => ({
+    topRated: topRated.map(r => ({
       conversationId: r.conversationId,
-      username: r.conversation.user.realName || r.conversation.user.username,
+      username: r.conversation?.user?.realName || r.conversation?.user?.username || '-',
       score: r.score,
     })),
   };
 }
 
 export async function listReviews(page = 1, pageSize = 20) {
+  pageSize = Math.min(100, Math.max(1, pageSize));
   const [list, total] = await Promise.all([
     prisma.promptReview.findMany({
       include: {
@@ -247,7 +245,7 @@ export async function listReviews(page = 1, pageSize = 20) {
       id: r.id,
       conversationId: r.conversationId,
       conversationTitle: r.conversation.title,
-      username: r.conversation.user.realName || r.conversation.user.username,
+      username: r.conversation?.user?.realName || r.conversation?.user?.username || '-',
       reviewModelName: r.reviewModel?.name || '-',
       score: r.score,
       strengths: r.strengths,

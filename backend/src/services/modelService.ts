@@ -26,6 +26,20 @@ export interface UpdateModelInput {
 
 export async function listModels() {
   return prisma.sysModel.findMany({
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      modelName: true,
+      baseUrl: true,
+      enabled: true,
+      maxTokens: true,
+      temperature: true,
+      timeoutSeconds: true,
+      isReviewModel: true,
+      createTime: true,
+      updateTime: true,
+    },
     orderBy: { createTime: 'desc' },
   });
 }
@@ -39,10 +53,24 @@ export async function createModel(input: CreateModelInput) {
       baseUrl: input.baseUrl || '',
       apiKey: input.apiKey || '',
       enabled: 0,
-      maxTokens: input.maxTokens || 4096,
-      temperature: input.temperature || 0.7,
-      timeoutSeconds: input.timeoutSeconds || 60,
-      isReviewModel: input.isReviewModel || 0,
+      maxTokens: input.maxTokens ?? 4096,
+      temperature: input.temperature ?? 0.7,
+      timeoutSeconds: input.timeoutSeconds ?? 60,
+      isReviewModel: input.isReviewModel ?? 0,
+    },
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      modelName: true,
+      baseUrl: true,
+      enabled: true,
+      maxTokens: true,
+      temperature: true,
+      timeoutSeconds: true,
+      isReviewModel: true,
+      createTime: true,
+      updateTime: true,
     },
   });
 }
@@ -62,7 +90,24 @@ export async function updateModel(id: number, input: UpdateModelInput) {
   if (input.timeoutSeconds !== undefined) data.timeoutSeconds = input.timeoutSeconds;
   if (input.isReviewModel !== undefined) data.isReviewModel = input.isReviewModel;
 
-  return prisma.sysModel.update({ where: { id }, data });
+  return prisma.sysModel.update({
+    where: { id },
+    data,
+    select: {
+      id: true,
+      name: true,
+      provider: true,
+      modelName: true,
+      baseUrl: true,
+      enabled: true,
+      maxTokens: true,
+      temperature: true,
+      timeoutSeconds: true,
+      isReviewModel: true,
+      createTime: true,
+      updateTime: true,
+    },
+  });
 }
 
 export async function deleteModel(id: number) {
@@ -79,6 +124,9 @@ export async function toggleModelStatus(id: number) {
   return prisma.sysModel.update({
     where: { id },
     data: { enabled: newStatus },
+    select: {
+      id: true, name: true, enabled: true, isReviewModel: true,
+    },
   });
 }
 
@@ -95,5 +143,8 @@ export async function setReviewModel(id: number) {
   return prisma.sysModel.update({
     where: { id },
     data: { isReviewModel: 1 },
+    select: {
+      id: true, name: true, isReviewModel: true,
+    },
   });
 }

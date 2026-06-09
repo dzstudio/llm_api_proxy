@@ -121,8 +121,17 @@ export async function deleteUser(id: number) {
     throw new Error('不能删除管理员账号');
   }
 
-  // Delete related records
+  // Delete related records (including conversations, messages, reviews)
+  const conversations = await prisma.conversation.findMany({
+    where: { userId: id },
+    select: { id: true },
+  });
+  const conversationIds = conversations.map(c => c.id);
+
   await prisma.$transaction([
+    prisma.promptReview.deleteMany({ where: { conversationId: { in: conversationIds } } }),
+    prisma.message.deleteMany({ where: { conversationId: { in: conversationIds } } }),
+    prisma.conversation.deleteMany({ where: { userId: id } }),
     prisma.sysApiKey.deleteMany({ where: { userId: id } }),
     prisma.dailyReport.deleteMany({ where: { userId: id } }),
     prisma.sysUser.delete({ where: { id } }),
