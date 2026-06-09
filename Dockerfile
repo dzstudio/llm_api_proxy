@@ -19,16 +19,20 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app/backend
 
-# Copy backend dist, prisma, and deps
+# Install production deps only (no typescript, tsx, prisma CLI, etc.)
+COPY --from=backend-build /build/backend/package*.json ./
+RUN npm ci --omit=dev
+
+# Copy generated Prisma client (engine binary + generated code)
+COPY --from=backend-build /build/backend/node_modules/.prisma ./node_modules/.prisma
+
+# Copy backend dist and prisma schema
 COPY --from=backend-build /build/backend/dist ./dist
 COPY --from=backend-build /build/backend/prisma ./prisma
-COPY --from=backend-build /build/backend/node_modules ./node_modules
-COPY --from=backend-build /build/backend/package.json ./
 
 # Copy frontend dist (served as static files by Express)
 COPY --from=frontend-build /build/frontend/dist ../frontend/dist
 
-# Create persistent directories
 RUN mkdir -p /app/data /app/logs
 
 ENV NODE_ENV=production
