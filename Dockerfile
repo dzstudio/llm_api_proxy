@@ -1,39 +1,38 @@
-# Multi-stage build for LLM API Proxy
 # Stage 1: Build frontend
-FROM node:22-alpine AS frontend-builder
-WORKDIR /app/frontend
+FROM node:22-alpine AS frontend-build
+WORKDIR /build/frontend
 COPY frontend/package*.json ./
-RUN npm install
+RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build backend
-FROM node:22-alpine AS backend-builder
-WORKDIR /app/backend
+FROM node:22-alpine AS backend-build
+WORKDIR /build/backend
 COPY backend/package*.json ./
-RUN npm install
+RUN npm ci
 COPY backend/ ./
 RUN npx prisma generate
 RUN npm run build
 
-# Stage 3: Runtime
+# Stage 3: Production
 FROM node:22-alpine
-WORKDIR /app
+WORKDIR /app/backend
 
-# Create directories
+# Copy backend dist, prisma, and deps
+COPY --from=backend-build /build/backend/dist ./dist
+COPY --from=backend-build /build/backend/prisma ./prisma
+COPY --from=backend-build /build/backend/node_modules ./node_modules
+COPY --from=backend-build /build/backend/package.json ./
+
+# Copy frontend dist (served as static files by Express)
+COPY --from=frontend-build /build/frontend/dist ../frontend/dist
+
+# Create persistent directories
 RUN mkdir -p /app/data /app/logs
 
-# Copy backend
-COPY --from=backend-builder /app/backend/dist /app/dist
-COPY --from=backend-builder /app/backend/node_modules /app/node_modules
-COPY --from=backend-builder /app/backend/package.json /app/package.json
-COPY --from=backend-builder /app/backend/prisma /app/prisma
-
-# Copy frontend dist
-COPY --from=frontend-builder /app/frontend/dist /app/static
-
-# Generate Prisma client at runtime
-RUN npx prisma generate
+ENV NODE_ENV=production
+ENV PORT=8080
 
 EXPOSE 8080
 

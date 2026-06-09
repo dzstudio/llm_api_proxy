@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { config } from './config/index.js';
 import { authMiddleware } from './middleware/auth.js';
@@ -13,6 +15,9 @@ import reportRoutes from './routes/report.js';
 import reviewRoutes from './routes/review.js';
 import { seedAdmin } from './utils/seed.js';
 import { startScheduler } from './scheduler/dailyReport.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 
@@ -35,6 +40,16 @@ app.use('/api/reviews', reviewRoutes);
 app.get('/api/health', (_req, res) => {
   res.json({ code: 0, message: 'ok', data: { uptime: process.uptime() } });
 });
+
+// Serve frontend static files in production
+if (process.env.NODE_ENV === 'production') {
+  const staticDir = path.resolve(__dirname, '../../frontend/dist');
+  app.use(express.static(staticDir));
+  // SPA fallback: serve index.html for any non-API route
+  app.get('*', (_req, res) => {
+    res.sendFile(path.join(staticDir, 'index.html'));
+  });
+}
 
 // Error handler
 app.use(errorHandler);
