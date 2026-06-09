@@ -4,11 +4,18 @@ import { verifyToken } from '../utils/jwt.js';
 // Paths that don't require authentication
 const PUBLIC_PATHS = [
   '/api/auth/login',
+  '/api/health',
   '/api/llm',
 ];
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {
-  // Skip auth for public paths
+  // Skip auth for non-API paths (frontend static files, SPA routes)
+  if (!req.path.startsWith('/api')) {
+    next();
+    return;
+  }
+
+  // Skip auth for public API paths
   if (PUBLIC_PATHS.some((path) => req.path.startsWith(path))) {
     next();
     return;
