@@ -25,3 +25,6 @@ logs/
 # Environment
 .env.*
 !.env.example
+
+# Docker image exports
+llm-api-proxy-image.*
