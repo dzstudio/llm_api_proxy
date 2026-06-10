@@ -55,7 +55,7 @@ docker compose logs -f
 docker compose down
 ```
 
-访问：http://localhost:8080
+访问：http://localhost:8088
 
 数据持久化在 `./data` 目录，日志在 `./logs` 目录。
 
@@ -106,7 +106,7 @@ nano .env
 docker compose up -d
 ```
 
-访问 `http://<服务器IP>:8080`，使用管理员账号登录。
+访问 `http://<服务器IP>:8088`，使用管理员账号登录。
 
 ### 5. 首次登录注意事项
 
@@ -164,7 +164,7 @@ server {
 
     # Web 管理后台 + LLM Gateway API
     location / {
-        proxy_pass http://127.0.0.1:8080;
+        proxy_pass http://127.0.0.1:8088;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -214,7 +214,7 @@ sudo certbot --nginx -d ai.yourdomain.com
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| PORT | 8080 | 服务端口 |
+| PORT | 8088 | 服务端口 |
 | JWT_SECRET | llm-api-proxy-dev-secret-change-me | JWT 签名密钥 |
 | JWT_EXPIRATION | 24h | JWT 过期时间 |
 | ADMIN_DEFAULT_USERNAME | admin | 默认管理员用户名 |
