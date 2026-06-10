@@ -26,9 +26,18 @@ RUN npm ci --omit=dev
 # Copy generated Prisma client (engine binary + generated code)
 COPY --from=backend-build /build/backend/node_modules/.prisma ./node_modules/.prisma
 
-# Copy backend dist and prisma schema
+# Copy Prisma CLI and its deps for production migrations
+COPY --from=backend-build /build/backend/node_modules/prisma ./node_modules/prisma
+COPY --from=backend-build /build/backend/node_modules/@prisma/engines ./node_modules/@prisma/engines
+COPY --from=backend-build /build/backend/node_modules/@prisma/config ./node_modules/@prisma/config
+
+# Copy backend dist, prisma schema, and migrations
 COPY --from=backend-build /build/backend/dist ./dist
 COPY --from=backend-build /build/backend/prisma ./prisma
+
+# Copy entrypoint
+COPY backend/docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
 
 # Copy frontend dist (served as static files by Express)
 COPY --from=frontend-build /build/frontend/dist ../frontend/dist
@@ -40,4 +49,4 @@ ENV PORT=8080
 
 EXPOSE 8080
 
-CMD ["node", "dist/index.js"]
+CMD ["./docker-entrypoint.sh"]

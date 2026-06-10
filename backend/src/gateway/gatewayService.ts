@@ -171,7 +171,7 @@ export async function logConversation(
       data: {
         conversationId: conversation.id,
         role: 'assistant',
-        content: assistantContent,
+        content: assistantContent.length > 8192 ? assistantContent.slice(0, 8192) + '…[已截取]' : assistantContent,
         tokens: completionTokens,
       },
     });

@@ -152,12 +152,20 @@ export async function chatCompletions(req: Request, res: Response) {
     } else {
       const data = await response.json() as any;
       // Extract assistant content from either OpenAI or Anthropic format
+      const contentArray = data.content as any[] | undefined;
       // Anthropic format: content is an array, find the text block (skip thinking blocks)
-      const anthropicTextBlock = (data.content as any[])?.find?.((b: any) => b.type === 'text');
+      const anthropicTextBlock = contentArray?.find?.((b: any) => b.type === 'text');
+      // Fallback: use thinking content if no text block (edge case: all tokens consumed by thinking)
+      const anthropicThinkingBlock = !anthropicTextBlock
+        ? contentArray?.find?.((b: any) => b.type === 'thinking')
+        : null;
       const assistantContent =
         data.choices?.[0]?.message?.content ||    // OpenAI format
         anthropicTextBlock?.text ||                // Anthropic format: text block
+        anthropicThinkingBlock?.thinking ||         // Anthropic format: thinking block fallback
         '';
+
+      console.log(`[Gateway:${requestId}] Content extraction: hasChoices=${!!data.choices}, contentBlocks=${contentArray?.length || 0}, blockTypes=[${contentArray?.map((b: any) => b.type).join(',') || ''}], assistantContentLen=${assistantContent.length}`);
 
       const usage = data.usage || null;
 
