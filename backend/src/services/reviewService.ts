@@ -69,25 +69,43 @@ function parseEvaluation(raw: string): EvaluationResult | null {
 }
 
 async function callReviewModel(model: any, userPrompt: string): Promise<string> {
-  const baseUrl = model.baseUrl.replace(/\/$/, '');
-  const url = `${baseUrl}/v1/chat/completions`;
+  const baseUrl = (model.baseUrl || '').replace(/\/$/, '');
+  const isAnthropic = baseUrl.endsWith('/anthropic');
+
+  const url = isAnthropic
+    ? `${baseUrl}/v1/messages`
+    : `${baseUrl}/v1/chat/completions`;
 
   const prompt = EVALUATION_PROMPT.replace('{userPrompt}', userPrompt);
 
   const timeoutMs = (model.timeoutSeconds || 60) * 1000;
 
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${model.apiKey}`,
+  };
+  if (isAnthropic) {
+    headers['x-api-key'] = model.apiKey;
+    delete headers['Authorization'];
+  }
+
+  const body = isAnthropic
+    ? {
+        model: model.modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1000,
+      }
+    : {
+        model: model.modelName,
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 1000,
+        temperature: 0.1,
+      };
+
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${model.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: model.modelName,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: 1000,
-      temperature: 0.1,
-    }),
+    headers,
+    body: JSON.stringify(body),
     signal: AbortSignal.timeout(timeoutMs),
   });
 
@@ -96,6 +114,15 @@ async function callReviewModel(model: any, userPrompt: string): Promise<string> 
   }
 
   const data = (await response.json()) as any;
+
+  // Anthropic format
+  if (isAnthropic) {
+    const contentArray = data.content as any[] | undefined;
+    const textBlock = contentArray?.find?.((b: any) => b.type === 'text');
+    return textBlock?.text || '';
+  }
+
+  // OpenAI format
   return data.choices?.[0]?.message?.content || '';
 }
 
