@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================
-# 服务器端：加载镜像并启动容器
+# 服务器端：拉取代码并构建启动
 # 路径: /var/data/llm_api_proxy
 # =============================================
 set -e
@@ -16,14 +16,9 @@ echo "  LLM API Proxy - 部署"
 echo "========================================"
 echo ""
 
-info "1/3 加载镜像..."
-docker load -i llm-api-proxy-image.tar.gz
-
-info "2/3 启动容器..."
-docker compose up -d
-
-info "3/3 清理压缩包..."
-rm -f llm-api-proxy-image.tar.gz
+info "1/1 拉取代码并构建启动..."
+git pull
+docker compose up -d --build
 
 echo ""
 echo "========================================"
