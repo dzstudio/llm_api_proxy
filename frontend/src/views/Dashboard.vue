@@ -136,11 +136,9 @@ function getSliceOffset(i: number) {
         <div class="text-xs text-gray-400 mt-1">本月累计</div>
       </div>
       <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
-        <div class="text-xs font-medium text-gray-500 mb-2">平均评分</div>
-        <div class="text-2xl font-bold" :class="reviewStats ? getScoreColor(reviewStats.avgScore) : 'text-gray-900'">
-          {{ reviewStats ? reviewStats.avgScore : '--' }}
-        </div>
-        <div class="text-xs text-gray-400 mt-1">活跃 {{ convStats?.activeUsersToday ?? '--' }} 人</div>
+        <div class="text-xs font-medium text-gray-500 mb-2">活跃员工</div>
+        <div class="text-2xl font-bold text-gray-900">{{ convStats?.activeUsersToday ?? '--' }}</div>
+        <div class="text-xs text-gray-400 mt-1">今日使用过 LLM</div>
       </div>
     </div>
 
