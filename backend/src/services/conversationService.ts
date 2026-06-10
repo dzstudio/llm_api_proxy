@@ -105,20 +105,55 @@ export async function getConversationDetail(id: number) {
 }
 
 export async function getConversationStats() {
-  const [totalConversations, totalTokens, totalMessages] = await Promise.all([
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const todayEnd = new Date(todayStart);
+  todayEnd.setDate(todayEnd.getDate() + 1);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const [
+    totalConversations, totalTokens, totalMessages,
+    todayConversations, todayTokensAgg, monthTokensAgg, activeUsersToday,
+    topUsers, modelUsage,
+    recentRecords,
+  ] = await Promise.all([
     prisma.conversation.count(),
     prisma.conversation.aggregate({ _sum: { tokenCount: true } }),
     prisma.conversation.aggregate({ _sum: { messageCount: true } }),
+    prisma.conversation.count({ where: { createTime: { gte: todayStart, lt: todayEnd } } }),
+    prisma.conversation.aggregate({
+      where: { createTime: { gte: todayStart, lt: todayEnd } },
+      _sum: { tokenCount: true },
+    }),
+    prisma.conversation.aggregate({
+      where: { createTime: { gte: monthStart, lt: todayEnd } },
+      _sum: { tokenCount: true },
+    }),
+    prisma.conversation.groupBy({
+      by: ['userId'],
+      where: { createTime: { gte: todayStart, lt: todayEnd } },
+    }),
+    prisma.conversation.groupBy({
+      by: ['userId'],
+      _count: { id: true },
+      _sum: { tokenCount: true },
+      orderBy: { _count: { id: 'desc' } },
+      take: 10,
+    }),
+    prisma.conversation.groupBy({
+      by: ['modelId'],
+      _count: { id: true },
+      _sum: { tokenCount: true },
+    }),
+    prisma.conversation.findMany({
+      orderBy: { createTime: 'desc' },
+      take: 5,
+      include: {
+        user: { select: USER_SELECT },
+        model: { select: MODEL_SELECT },
+      },
+    }),
   ]);
-
-  // Users who use the gateway most
-  const topUsers = await prisma.conversation.groupBy({
-    by: ['userId'],
-    _count: { id: true },
-    _sum: { tokenCount: true },
-    orderBy: { _count: { id: 'desc' } },
-    take: 10,
-  });
 
   const userIds = topUsers.map(u => u.userId);
   const users = await prisma.sysUser.findMany({
@@ -126,13 +161,6 @@ export async function getConversationStats() {
     select: USER_SELECT,
   });
   const userMap = new Map(users.map(u => [u.id, u]));
-
-  // Model usage distribution
-  const modelUsage = await prisma.conversation.groupBy({
-    by: ['modelId'],
-    _count: { id: true },
-    _sum: { tokenCount: true },
-  });
 
   const modelIds = modelUsage.filter(m => m.modelId).map(m => m.modelId!);
   const models = await prisma.sysModel.findMany({
@@ -145,6 +173,10 @@ export async function getConversationStats() {
     totalConversations,
     totalTokens: totalTokens._sum.tokenCount || 0,
     totalMessages: totalMessages._sum.messageCount || 0,
+    todayConversations,
+    todayTokens: todayTokensAgg._sum.tokenCount || 0,
+    monthTokens: monthTokensAgg._sum.tokenCount || 0,
+    activeUsersToday: activeUsersToday.length,
     topUsers: topUsers.map(u => ({
       userId: u.userId,
       username: userMap.get(u.userId)?.realName || userMap.get(u.userId)?.username || '-',
@@ -156,6 +188,15 @@ export async function getConversationStats() {
       modelName: modelMap.get(m.modelId!)?.name || '-',
       conversationCount: m._count.id,
       tokenCount: m._sum.tokenCount || 0,
+    })),
+    recentRecords: recentRecords.map(c => ({
+      id: c.id,
+      username: c.user.realName || c.user.username,
+      modelName: c.model?.name || '-',
+      title: c.title,
+      tokenCount: c.tokenCount,
+      messageCount: c.messageCount,
+      createTime: c.createTime,
     })),
   };
 }

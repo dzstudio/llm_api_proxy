@@ -4,9 +4,10 @@ import { adminGuard } from '../middleware/auth.js';
 
 const router = Router();
 
+router.get('/', userController.list);
+
 router.use(adminGuard);
 
-router.get('/', userController.list);
 router.post('/', userController.create);
 router.put('/:id', userController.update);
 router.delete('/:id', userController.remove);

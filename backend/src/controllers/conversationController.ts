@@ -1,8 +1,14 @@
 import type { Request, Response } from 'express';
 import * as conversationService from '../services/conversationService.js';
 
+function getAuth(req: Request) {
+  const { userId, role } = req as any;
+  return { userId: userId as number, role: role as string };
+}
+
 export async function list(req: Request, res: Response) {
   try {
+    const { userId: currentUserId, role } = getAuth(req);
     const { userId, modelId, keyword, startDate, endDate, page, pageSize } = req.query;
 
     const parsedUserId = userId ? parseInt(String(userId)) : undefined;
@@ -19,8 +25,11 @@ export async function list(req: Request, res: Response) {
       return;
     }
 
+    // Non-admin users can only see their own conversations
+    const effectiveUserId = role === 'ADMIN' ? parsedUserId : currentUserId;
+
     const result = await conversationService.listConversations({
-      userId: parsedUserId,
+      userId: effectiveUserId,
       modelId: parsedModelId,
       keyword: keyword ? String(keyword) : undefined,
       startDate: startDate ? String(startDate) : undefined,
@@ -37,6 +46,7 @@ export async function list(req: Request, res: Response) {
 
 export async function detail(req: Request, res: Response) {
   try {
+    const { userId: currentUserId, role } = getAuth(req);
     const id = parseInt(String(req.params.id));
     if (isNaN(id)) {
       res.status(400).json({ code: 400, message: '参数错误', data: null });
@@ -46,6 +56,12 @@ export async function detail(req: Request, res: Response) {
     const data = await conversationService.getConversationDetail(id);
     if (!data) {
       res.status(404).json({ code: 404, message: '会话不存在', data: null });
+      return;
+    }
+
+    // Non-admin users can only view their own conversation details
+    if (role !== 'ADMIN' && data.userId !== currentUserId) {
+      res.status(403).json({ code: 403, message: '无权查看此会话', data: null });
       return;
     }
 

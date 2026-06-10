@@ -174,7 +174,7 @@ onMounted(fetchUsers)
         <p class="mt-1 text-sm text-slate-500">管理团队成员的账号和权限</p>
       </div>
       <button
-        class="inline-flex items-center gap-2 rounded-lg bg-[#005d9c] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#004b80] transition-colors"
+        class="inline-flex items-center gap-2 rounded-lg bg-[#111827] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1F2937] transition-colors"
         @click="openCreateDialog"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -200,7 +200,7 @@ onMounted(fetchUsers)
         v-model="keyword"
         type="text"
         placeholder="搜索用户名、姓名、邮箱..."
-        class="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+        class="block w-full max-w-xs rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
         @keydown.enter="handleSearch"
       />
       <button
@@ -241,7 +241,7 @@ onMounted(fetchUsers)
                   :class="[
                     'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
                     user.role === 'ADMIN'
-                      ? 'bg-[#005d9c]/10 text-[#005d9c]'
+                      ? 'bg-[#111827]/10 text-[#111827]'
                       : 'bg-slate-100 text-slate-600',
                   ]"
                 >
@@ -332,7 +332,7 @@ onMounted(fetchUsers)
               type="text"
               :disabled="dialogMode === 'edit'"
               placeholder="请输入用户名"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c] disabled:bg-slate-50"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827] disabled:bg-slate-50"
             />
           </div>
           <div>
@@ -344,7 +344,7 @@ onMounted(fetchUsers)
               v-model="form.password"
               type="password"
               :placeholder="dialogMode === 'create' ? '请输入密码' : '留空则不修改'"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
             />
           </div>
           <div>
@@ -353,7 +353,7 @@ onMounted(fetchUsers)
               v-model="form.realName"
               type="text"
               placeholder="请输入真实姓名"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
             />
           </div>
           <div>
@@ -362,7 +362,7 @@ onMounted(fetchUsers)
               v-model="form.email"
               type="email"
               placeholder="请输入邮箱"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
             />
           </div>
           <div>
@@ -371,14 +371,14 @@ onMounted(fetchUsers)
               v-model="form.department"
               type="text"
               placeholder="请输入部门"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
             />
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">角色</label>
             <select
               v-model="form.role"
-              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]"
+              class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]"
             >
               <option value="USER">普通用户</option>
               <option value="ADMIN">管理员</option>
@@ -395,7 +395,7 @@ onMounted(fetchUsers)
           </button>
           <button
             :disabled="submitting"
-            class="rounded-lg bg-[#005d9c] px-4 py-2 text-sm font-medium text-white hover:bg-[#004b80] disabled:opacity-50 transition-colors"
+            class="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white hover:bg-[#1F2937] disabled:opacity-50 transition-colors"
             @click="handleSubmit"
           >
             {{ submitting ? '提交中...' : '确认' }}

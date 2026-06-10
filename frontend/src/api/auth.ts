@@ -14,6 +14,7 @@ export interface LoginResponse {
 }
 
 export interface UserInfo {
+  id?: number
   username: string
   realName: string
   role: string
@@ -31,5 +32,8 @@ export const authApi = {
   },
   getCurrentUser() {
     return request.get<ApiResponse<UserInfo>>('/auth/me')
+  },
+  changePassword(currentPassword: string, newPassword: string) {
+    return request.post<ApiResponse<null>>('/auth/change-password', { currentPassword, newPassword })
   },
 }

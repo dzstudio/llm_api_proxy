@@ -1,15 +1,27 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { apiKeyApi, type ApiKeyItem, type ApiKeyCreated } from '@/api/apiKey'
+import { userApi, type UserItem } from '@/api/user'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.userInfo?.role === 'ADMIN')
 
 const keys = ref<ApiKeyItem[]>([])
 const loading = ref(false)
 const error = ref('')
 
+// User list for admin selection
+const users = ref<UserItem[]>([])
+const selectedUserId = ref<number | null>(null)
+
 // Generate dialog
 const showGenerateDialog = ref(false)
+const generating = ref(false)
 const generatedKey = ref<ApiKeyCreated | null>(null)
-const copied = ref(false)
+const generatedFor = ref('')
+const toast = ref('')
+let toastTimer: ReturnType<typeof setTimeout> | null = null
 
 // Reset dialog
 const showResetConfirm = ref(false)
@@ -32,27 +44,59 @@ async function fetchKeys() {
   }
 }
 
+async function fetchUsers() {
+  try {
+    const res = await userApi.list({ pageSize: 999 })
+    if (res.data.code === 0) {
+      users.value = res.data.data.list.filter(u => u.status === 1)
+    }
+  } catch (err: any) {
+    console.error('获取用户列表失败:', err.response?.data || err.message || err)
+  }
+}
+
 // Generate
+async function openGenerateDialog() {
+  error.value = ''
+  selectedUserId.value = null
+  generatedKey.value = null
+  generating.value = false
+  await fetchUsers()
+  showGenerateDialog.value = true
+}
+
 async function handleGenerate() {
+  if (!selectedUserId.value) {
+    error.value = '请选择用户'
+    return
+  }
+  generating.value = true
   error.value = ''
   try {
-    const res = await apiKeyApi.create()
+    const res = await apiKeyApi.create(selectedUserId.value)
     if (res.data.code === 0) {
       generatedKey.value = res.data.data
-      copied.value = false
-      showGenerateDialog.value = true
+      generatedFor.value = users.value.find(u => u.id === selectedUserId.value)?.realName || users.value.find(u => u.id === selectedUserId.value)?.username || ''
       fetchKeys()
     }
   } catch (err: any) {
     error.value = err.response?.data?.message || '生成失败'
+  } finally {
+    generating.value = false
   }
 }
 
-function copyKey() {
-  if (!generatedKey.value) return
-  navigator.clipboard.writeText(generatedKey.value.apiKey)
-  copied.value = true
-  setTimeout(() => { copied.value = false }, 3000)
+function copyKey(keyText?: string) {
+  const text = keyText || generatedKey.value?.apiKey
+  if (!text) return
+  navigator.clipboard.writeText(text)
+  showToast('复制成功')
+}
+
+function showToast(msg: string) {
+  toast.value = msg
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 2000)
 }
 
 // Reset
@@ -112,7 +156,10 @@ function formatTime(t: string) {
 
 const statusLabel = (s: number) => (s === 1 ? '启用' : '禁用')
 
-onMounted(fetchKeys)
+onMounted(() => {
+  fetchKeys()
+  fetchUsers()
+})
 </script>
 
 <template>
@@ -121,11 +168,15 @@ onMounted(fetchKeys)
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-semibold tracking-tight text-slate-900">API Key 管理</h1>
-        <p class="mt-1 text-sm text-slate-500">生成和管理团队成员的 API Key</p>
+        <p class="mt-1 text-sm text-slate-500">
+          <template v-if="isAdmin">为团队成员生成和管理 API Key</template>
+          <template v-else>查看您的 API Key，联系管理员创建或重置</template>
+        </p>
       </div>
       <button
-        class="inline-flex items-center gap-2 rounded-lg bg-[#005d9c] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#004b80] transition-colors"
-        @click="handleGenerate"
+        v-if="isAdmin"
+        class="inline-flex items-center gap-2 rounded-lg bg-[#111827] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1F2937] transition-colors"
+        @click="openGenerateDialog"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
@@ -133,6 +184,16 @@ onMounted(fetchKeys)
         生成 API Key
       </button>
     </div>
+
+    <!-- Toast -->
+    <Transition name="toast">
+      <div v-if="toast" class="fixed top-6 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-2.5 text-sm font-medium text-emerald-700 shadow-lg border border-emerald-200">
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+        </svg>
+        {{ toast }}
+      </div>
+    </Transition>
 
     <!-- Error -->
     <div v-if="error" class="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
@@ -154,7 +215,7 @@ onMounted(fetchKeys)
               <th class="px-6 py-3 text-xs font-medium text-slate-500">API Key</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">状态</th>
               <th class="px-6 py-3 text-xs font-medium text-slate-500">创建时间</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">操作</th>
+              <th v-if="isAdmin" class="px-6 py-3 text-xs font-medium text-slate-500">操作</th>
             </tr>
           </thead>
           <tbody>
@@ -164,7 +225,11 @@ onMounted(fetchKeys)
               class="border-b border-slate-50 text-sm hover:bg-slate-50/50 transition-colors"
             >
               <td class="px-6 py-3 font-medium text-slate-900">{{ key.username }}</td>
-              <td class="px-6 py-3 font-mono text-xs text-slate-500">{{ key.apiKey }}</td>
+              <td class="px-6 py-3">
+                <div class="flex items-center gap-2">
+                  <code class="font-mono text-xs text-slate-500 truncate max-w-[280px]">{{ key.apiKey }}</code>
+                </div>
+              </td>
               <td class="px-6 py-3">
                 <button
                   :class="[
@@ -172,15 +237,17 @@ onMounted(fetchKeys)
                     key.status === 1
                       ? 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'
                       : 'bg-red-50 text-red-600 hover:bg-red-100',
+                    !isAdmin && 'cursor-default hover:bg-inherit',
                   ]"
-                  @click="handleToggle(key)"
+                  :disabled="!isAdmin"
+                  @click="isAdmin && handleToggle(key)"
                 >
                   <span :class="['h-1.5 w-1.5 rounded-full', key.status === 1 ? 'bg-emerald-500' : 'bg-red-500']" />
                   {{ statusLabel(key.status) }}
                 </button>
               </td>
               <td class="px-6 py-3 text-slate-500">{{ formatTime(key.createTime) }}</td>
-              <td class="px-6 py-3">
+              <td v-if="isAdmin" class="px-6 py-3">
                 <div class="flex items-center gap-2">
                   <button
                     class="rounded-lg px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
@@ -198,8 +265,9 @@ onMounted(fetchKeys)
               </td>
             </tr>
             <tr v-if="keys.length === 0 && !loading">
-              <td colspan="5" class="px-6 py-12 text-center text-sm text-slate-400">
-                暂无 API Key，点击上方按钮生成
+              <td :colspan="isAdmin ? 5 : 4" class="px-6 py-12 text-center text-sm text-slate-400">
+                <template v-if="isAdmin">暂无 API Key，点击上方按钮生成</template>
+                <template v-else>暂无 API Key，请联系管理员创建</template>
               </td>
             </tr>
           </tbody>
@@ -207,41 +275,75 @@ onMounted(fetchKeys)
       </div>
     </div>
 
-    <!-- Generate Success Dialog -->
+    <!-- Generate Dialog -->
     <div v-if="showGenerateDialog" class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/30" @click="showGenerateDialog = false" />
       <div class="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-        <div class="mb-4 flex items-center gap-3">
-          <div class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
-            <svg class="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-            </svg>
-          </div>
-          <div>
-            <h2 class="text-lg font-semibold text-slate-900">API Key 已生成</h2>
-            <p class="text-xs text-red-500">请立即复制保存，关闭后将无法再次查看</p>
-          </div>
-        </div>
+        <template v-if="!generatedKey">
+          <h2 class="mb-4 text-lg font-semibold text-slate-900">生成 API Key</h2>
 
-        <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div class="flex items-center justify-between gap-3">
-            <code class="flex-1 break-all text-sm font-mono text-slate-900">{{ generatedKey?.apiKey }}</code>
-            <button
-              class="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="copied ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'"
-              @click="copyKey"
+          <!-- User Selector -->
+          <div class="mb-5">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">选择用户</label>
+            <select
+              v-model="selectedUserId"
+              class="block w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827] transition-colors"
             >
-              {{ copied ? '已复制' : '复制' }}
+              <option :value="null" disabled>请选择用户</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">
+                {{ u.realName || u.username }} ({{ u.username }})
+              </option>
+            </select>
+          </div>
+
+          <div class="flex justify-end gap-3">
+            <button
+              class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+              @click="showGenerateDialog = false"
+            >
+              取消
+            </button>
+            <button
+              :disabled="!selectedUserId || generating"
+              class="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white hover:bg-[#1F2937] disabled:cursor-not-allowed disabled:opacity-50 transition-colors"
+              @click="handleGenerate"
+            >
+              {{ generating ? '生成中...' : '确认生成' }}
             </button>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <div class="mb-4 flex items-center gap-3">
+            <div class="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100">
+              <svg class="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            </div>
+            <div>
+              <h2 class="text-lg font-semibold text-slate-900">{{ generatedFor }} 的 API Key 已生成</h2>
+              <p class="text-xs text-red-500">请立即复制保存，关闭后将无法再次查看</p>
+            </div>
+          </div>
 
-        <button
-          class="w-full rounded-lg bg-[#005d9c] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#004b80] transition-colors"
-          @click="showGenerateDialog = false"
-        >
-          我已保存，关闭
-        </button>
+          <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <div class="flex items-center justify-between gap-3">
+              <code class="flex-1 break-all text-sm font-mono text-slate-900">{{ generatedKey?.apiKey }}</code>
+              <button
+                class="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                @click="copyKey(generatedKey!.apiKey)"
+              >
+                复制
+              </button>
+            </div>
+          </div>
+
+          <button
+            class="w-full rounded-lg bg-[#111827] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1F2937] transition-colors"
+            @click="showGenerateDialog = false"
+          >
+            我已保存，关闭
+          </button>
+        </template>
       </div>
     </div>
 
@@ -282,10 +384,18 @@ onMounted(fetchKeys)
             </div>
           </div>
           <div class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-            <code class="break-all text-sm font-mono text-slate-900">{{ resetKey.apiKey }}</code>
+            <div class="flex items-center justify-between gap-3">
+              <code class="flex-1 break-all text-sm font-mono text-slate-900">{{ resetKey.apiKey }}</code>
+              <button
+                class="flex-shrink-0 rounded-lg px-3 py-1.5 text-xs font-medium bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                @click="copyKey(resetKey.apiKey)"
+              >
+                复制
+              </button>
+            </div>
           </div>
           <button
-            class="w-full rounded-lg bg-[#005d9c] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#004b80] transition-colors"
+            class="w-full rounded-lg bg-[#111827] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1F2937] transition-colors"
             @click="showResetConfirm = false"
           >
             我已保存，关闭
@@ -320,3 +430,15 @@ onMounted(fetchKeys)
     </div>
   </div>
 </template>
+
+<style scoped>
+.toast-enter-active,
+.toast-leave-active {
+  transition: all 0.3s ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+  opacity: 0;
+  transform: translate(-50%, -12px);
+}
+</style>

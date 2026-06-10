@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import * as conversationController from '../controllers/conversationController.js';
-import { adminGuard } from '../middleware/auth.js';
+import { authMiddleware } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(adminGuard);
+router.use(authMiddleware);
 
 router.get('/', conversationController.list);
 router.get('/stats', conversationController.stats);

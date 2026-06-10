@@ -26,7 +26,7 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '员工管理 - LLM API Proxy' },
       },
       {
-        path: 'api-keys',
+        path: 'keys',
         name: 'ApiKeys',
         component: () => import('@/views/ApiKeys.vue'),
         meta: { title: 'API Key管理 - LLM API Proxy' },
@@ -48,6 +48,18 @@ const routes: RouteRecordRaw[] = [
         name: 'WorkLogs',
         component: () => import('@/views/Reports.vue'),
         meta: { title: '工作记录 - LLM API Proxy' },
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/Settings.vue'),
+        meta: { title: '系统设置 - LLM API Proxy' },
+      },
+      {
+        path: 'my-access',
+        name: 'MyAccess',
+        component: () => import('@/views/EmployeeAccess.vue'),
+        meta: { title: '接入信息 - LLM API Proxy' },
       },
     ],
   },

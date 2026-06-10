@@ -25,8 +25,6 @@ const form = reactive<CreateModelData>({
   modelName: '',
   baseUrl: '',
   apiKey: '',
-  maxTokens: 4096,
-  temperature: 0.7,
   timeoutSeconds: 60,
 })
 
@@ -48,8 +46,6 @@ function openCreate() {
   form.modelName = ''
   form.baseUrl = ''
   form.apiKey = ''
-  form.maxTokens = 4096
-  form.temperature = 0.7
   form.timeoutSeconds = 60
   dialogError.value = ''
   showDialog.value = true
@@ -63,8 +59,19 @@ function openEdit(m: ModelItem) {
   form.modelName = m.modelName
   form.baseUrl = m.baseUrl
   form.apiKey = m.apiKey
-  form.maxTokens = m.maxTokens
-  form.temperature = m.temperature
+  form.timeoutSeconds = m.timeoutSeconds
+  dialogError.value = ''
+  showDialog.value = true
+}
+
+function copyModel(m: ModelItem) {
+  dialogMode.value = 'create'
+  editingId.value = null
+  form.name = `${m.name} (副本)`
+  form.provider = m.provider
+  form.modelName = m.modelName
+  form.baseUrl = m.baseUrl
+  form.apiKey = m.apiKey
   form.timeoutSeconds = m.timeoutSeconds
   dialogError.value = ''
   showDialog.value = true
@@ -72,8 +79,8 @@ function openEdit(m: ModelItem) {
 
 async function handleSubmit() {
   dialogError.value = ''
-  if (!form.name || !form.modelName) {
-    dialogError.value = '请填写名称和模型标识'
+  if (!form.name || !form.modelName || !form.baseUrl || !form.apiKey) {
+    dialogError.value = '请填写名称、模型标识、Base URL 和 API Key'
     return
   }
   submitting.value = true
@@ -140,7 +147,7 @@ onMounted(fetchModels)
         <p class="mt-1 text-sm text-slate-500">配置 AI 模型供应商和参数</p>
       </div>
       <button
-        class="inline-flex items-center gap-2 rounded-lg bg-[#005d9c] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#004b80] transition-colors"
+        class="inline-flex items-center gap-2 rounded-lg bg-[#111827] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#1F2937] transition-colors"
         @click="openCreate"
       >
         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -199,7 +206,7 @@ onMounted(fetchModels)
                 <button
                   :class="[
                     'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors',
-                    m.isReviewModel === 1 ? 'bg-[#0ea5e9]/10 text-[#0ea5e9]' : 'bg-slate-100 text-slate-500 hover:bg-slate-200',
+                    m.isReviewModel === 1 ? 'bg-[#3B82F6]/10 text-[#3B82F6]' : 'bg-slate-100 text-slate-500 hover:bg-slate-200',
                   ]"
                   @click="handleSetReview(m)"
                 >
@@ -207,8 +214,9 @@ onMounted(fetchModels)
                 </button>
               </td>
               <td class="px-6 py-3">
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-1.5">
                   <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-100" @click="openEdit(m)">编辑</button>
+                  <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50" @click="copyModel(m)">复制</button>
                   <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50" @click="confirmDelete(m)">删除</button>
                 </div>
               </td>
@@ -234,45 +242,35 @@ onMounted(fetchModels)
         <div class="space-y-4">
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">显示名称</label>
-            <input v-model="form.name" placeholder="如 DeepSeek V4" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
+            <input v-model="form.name" placeholder="如 DeepSeek V4" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]" />
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">供应商</label>
-            <select v-model="form.provider" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]">
+            <select v-model="form.provider" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]">
               <option v-for="p in providers" :key="p" :value="p">{{ p }}</option>
             </select>
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">模型标识 (model name)</label>
-            <input v-model="form.modelName" placeholder="如 deepseek-chat" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
+            <input v-model="form.modelName" placeholder="如 deepseek-chat" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]" />
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">Base URL</label>
-            <input v-model="form.baseUrl" placeholder="如 https://api.deepseek.com/v1" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
+            <input v-model="form.baseUrl" placeholder="如 https://api.deepseek.com/v1" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm font-mono focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]" />
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-600">API Key</label>
-            <input v-model="form.apiKey" type="password" placeholder="供应商 API Key" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
+            <input v-model="form.apiKey" type="password" placeholder="供应商 API Key" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]" />
           </div>
-          <div class="grid grid-cols-3 gap-4">
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600">Max Tokens</label>
-              <input v-model.number="form.maxTokens" type="number" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600">Temperature</label>
-              <input v-model.number="form.temperature" type="number" step="0.1" min="0" max="2" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
-            </div>
-            <div>
-              <label class="mb-1 block text-xs font-medium text-slate-600">超时(秒)</label>
-              <input v-model.number="form.timeoutSeconds" type="number" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#005d9c] focus:outline-none focus:ring-1 focus:ring-[#005d9c]" />
-            </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-slate-600">超时(秒)</label>
+            <input v-model.number="form.timeoutSeconds" type="number" class="block w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-[#111827] focus:outline-none focus:ring-1 focus:ring-[#111827]" />
           </div>
         </div>
 
         <div class="mt-6 flex justify-end gap-3">
           <button class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50" @click="showDialog = false">取消</button>
-          <button :disabled="submitting" class="rounded-lg bg-[#005d9c] px-4 py-2 text-sm font-medium text-white hover:bg-[#004b80] disabled:opacity-50" @click="handleSubmit">{{ submitting ? '提交中...' : '确认' }}</button>
+          <button :disabled="submitting" class="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white hover:bg-[#1F2937] disabled:opacity-50" @click="handleSubmit">{{ submitting ? '提交中...' : '确认' }}</button>
         </div>
       </div>
     </div>

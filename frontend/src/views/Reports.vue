@@ -1,97 +1,86 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
-import { reportApi, type ReportItem, type ReportDetail, type ReportStats } from '@/api/report'
+import { ref, computed, onMounted } from 'vue'
+import { useAuthStore } from '@/stores/auth'
 import { userApi, type UserItem } from '@/api/user'
+import { conversationApi, type ConversationItem, type ConversationDetail } from '@/api/conversation'
+import { reviewApi, type ReviewItem } from '@/api/review'
 
-const reports = ref<ReportItem[]>([])
-const loading = ref(false)
-const error = ref('')
-const total = ref(0)
-const page = ref(1)
-const pageSize = 20
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.userInfo?.role === 'ADMIN')
 
-const stats = ref<ReportStats | null>(null)
-const showDetail = ref(false)
-const detail = ref<ReportDetail | null>(null)
-const detailLoading = ref(false)
-
+// ── State ──
 const users = ref<UserItem[]>([])
-const filters = ref({
-  userId: undefined as number | undefined,
-  startDate: '',
-  endDate: '',
+const userSearch = ref('')
+
+// Selected user
+const selectedUserId = ref<number | null>(null)
+const selectedUser = computed(() => users.value.find(u => u.id === selectedUserId.value))
+
+// Conversations for selected user
+const conversations = ref<ConversationItem[]>([])
+const convLoading = ref(false)
+
+// Group by date
+interface DateGroup {
+  date: string
+  label: string
+  count: number
+  conversations: ConversationItem[]
+}
+const dateGroups = computed<DateGroup[]>(() => {
+  const map = new Map<string, ConversationItem[]>()
+  conversations.value.forEach(c => {
+    const d = formatDate(c.createTime)
+    if (!map.has(d)) map.set(d, [])
+    map.get(d)!.push(c)
+  })
+  return Array.from(map.entries()).map(([date, convs]) => ({
+    date,
+    label: formatDateLabel(date),
+    count: convs.length,
+    conversations: convs,
+  })).sort((a, b) => b.date.localeCompare(a.date))
 })
 
-async function fetchStats() {
-  try {
-    const res = await reportApi.stats()
-    if (res.data.code === 0) stats.value = res.data.data
-  } catch { /* non-critical */ }
-}
+// Selected date
+const selectedDate = ref<string | null>(null)
+const selectedDateGroup = computed(() => dateGroups.value.find(d => d.date === selectedDate.value))
 
-async function fetchReports() {
-  loading.value = true
-  try {
-    const params: any = { page: page.value, pageSize }
-    if (filters.value.userId) params.userId = filters.value.userId
-    if (filters.value.startDate) params.startDate = filters.value.startDate
-    if (filters.value.endDate) params.endDate = filters.value.endDate
+// Chat detail
+const showChatDetail = ref(false)
+const chatDetail = ref<ConversationDetail | null>(null)
+const reviewData = ref<ReviewItem | null>(null)
+const detailLoading = ref(false)
 
-    const res = await reportApi.list(params)
-    if (res.data.code === 0) {
-      reports.value = res.data.data.list
-      total.value = res.data.data.total
-    }
-  } catch (err: any) {
-    error.value = err.response?.data?.message || '加载失败'
-  } finally {
-    loading.value = false
-  }
-}
+// ── Computed ──
+const filteredUsers = computed(() => {
+  if (!userSearch.value) return users.value.filter(u => u.status === 1)
+  const q = userSearch.value.toLowerCase()
+  return users.value.filter(u =>
+    u.status === 1 && (
+      (u.realName || u.username).toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q)
+    ),
+  )
+})
 
-async function fetchUsers() {
-  try {
-    const res = await userApi.list({})
-    if (res.data.code === 0) users.value = res.data.data.list
-  } catch { /* non-critical */ }
-}
-
-async function openDetail(r: ReportItem) {
-  showDetail.value = true
-  detailLoading.value = true
-  detail.value = null
-  try {
-    const res = await reportApi.detail(r.id)
-    if (res.data.code === 0) detail.value = res.data.data
-  } catch (err: any) {
-    error.value = err.response?.data?.message || '加载详情失败'
-    showDetail.value = false
-  } finally {
-    detailLoading.value = false
-  }
-}
-
-function applyFilters() {
-  page.value = 1
-  fetchReports()
-}
-
-function resetFilters() {
-  filters.value.userId = undefined
-  filters.value.startDate = ''
-  filters.value.endDate = ''
-  page.value = 1
-  fetchReports()
-}
-
+// ── Methods ──
 function formatDate(t: string) {
-  if (!t) return '-'
-  const d = new Date(t)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  if (!t) return ''
+  return t.slice(0, 10)
 }
 
-function formatFullTime(t: string) {
-  return t ? new Date(t).toLocaleString('zh-CN') : '-'
+function formatDateLabel(dateStr: string) {
+  const today = new Date().toISOString().slice(0, 10)
+  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10)
+  if (dateStr === today) return `今天 · ${dateStr}`
+  if (dateStr === yesterday) return `昨天 · ${dateStr}`
+  return dateStr
+}
+
+function formatFullDate(t: string) {
+  if (!t) return '-'
+  return new Date(t).toLocaleString('zh-CN')
 }
 
 function formatTokens(n: number) {
@@ -101,206 +90,397 @@ function formatTokens(n: number) {
 }
 
 function getScoreColor(score: number | null) {
-  if (score === null) return 'text-slate-400'
-  if (score >= 80) return 'text-emerald-600'
-  if (score >= 60) return 'text-amber-600'
+  if (score === null) return 'text-gray-400'
+  if (score >= 80) return 'text-green-600'
+  if (score >= 60) return 'text-yellow-600'
   return 'text-red-600'
 }
 
-watch([page], () => {
-  fetchReports()
-})
+function getScoreBadge(score: number) {
+  if (score >= 80) return 'bg-green-50 text-green-600'
+  if (score >= 60) return 'bg-yellow-50 text-yellow-600'
+  return 'bg-red-50 text-red-600'
+}
 
-watch(showDetail, (val) => {
-  if (!val) detail.value = null
-})
+function getScoreLabel(score: number) {
+  if (score >= 80) return '优秀 Prompt'
+  if (score >= 60) return '良好 Prompt'
+  return '需改进 Prompt'
+}
 
-onMounted(() => {
-  fetchReports()
-  fetchStats()
-  fetchUsers()
-})
+function getScoreRingDash(score: number) {
+  const circumference = 226 // 2 * PI * 36 ≈ 226
+  return `${(score / 100) * circumference} ${circumference}`
+}
+
+function getScoreRingColor(score: number) {
+  if (score >= 80) return '#10B981'
+  if (score >= 60) return '#3B82F6'
+  return '#F59E0B'
+}
+
+function getProgressColor(val: number) {
+  if (val >= 90) return '#10B981'
+  if (val >= 75) return '#3B82F6'
+  if (val >= 60) return '#F59E0B'
+  return '#EF4444'
+}
+
+function getAvatarColor(name: string) {
+  const colors = ['#8B5CF6', '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6']
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  return colors[Math.abs(hash) % colors.length]
+}
+
+async function fetchUsers() {
+  try {
+    const res = await userApi.list({ pageSize: 999 })
+    if (res.data.code === 0) {
+      users.value = res.data.data.list
+      // Auto-select current user for non-admin
+      if (!isAdmin.value && authStore.userInfo) {
+        const currentUser = users.value.find(
+          u => u.username === authStore.userInfo!.username,
+        )
+        if (currentUser) {
+          selectUser(currentUser.id)
+        }
+      }
+    }
+  } catch { /* non-critical */ }
+}
+
+async function selectUser(userId: number) {
+  selectedUserId.value = userId
+  selectedDate.value = null
+  showChatDetail.value = false
+  chatDetail.value = null
+  conversations.value = []
+
+  convLoading.value = true
+  try {
+    const res = await conversationApi.list({ userId, pageSize: 200 })
+    if (res.data.code === 0) {
+      conversations.value = res.data.data.list
+    }
+  } catch { /* handled */ }
+  finally { convLoading.value = false }
+}
+
+async function selectDate(date: string) {
+  selectedDate.value = date
+  showChatDetail.value = false
+  chatDetail.value = null
+}
+
+async function openChatDetail(conv: ConversationItem) {
+  showChatDetail.value = true
+  chatDetail.value = null
+  reviewData.value = null
+  detailLoading.value = true
+
+  try {
+    const [detailRes, reviewRes] = await Promise.all([
+      conversationApi.detail(conv.id),
+      reviewApi.getByConversation(conv.id).catch(() => ({ data: { code: 0, data: null } })),
+    ])
+    if (detailRes.data.code === 0) chatDetail.value = detailRes.data.data
+    if (reviewRes.data.code === 0 && reviewRes.data.data) reviewData.value = reviewRes.data.data
+  } catch { /* handled */ }
+  finally { detailLoading.value = false }
+}
+
+function goBackToRecords() {
+  showChatDetail.value = false
+  chatDetail.value = null
+  reviewData.value = null
+}
+
+onMounted(fetchUsers)
 </script>
 
 <template>
-  <div>
-    <!-- Header -->
-    <div class="mb-6">
-      <h1 class="text-2xl font-semibold tracking-tight text-slate-900">工作记录</h1>
-      <p class="mt-1 text-sm text-slate-500">每日自动生成的 AI 使用报告</p>
-    </div>
-
-    <!-- Stats Cards -->
-    <div v-if="stats" class="mb-6 grid grid-cols-3 gap-4">
-      <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-medium text-slate-500">累计报告</p>
-        <p class="mt-1 text-2xl font-semibold text-slate-900">{{ stats.totalReports }}</p>
+  <div class="flex -m-6" style="height:calc(100vh - 64px);">
+    <!-- ═══ Left: Employee List ═══ -->
+    <div v-if="isAdmin" class="w-56 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+      <div class="p-3 border-b border-gray-100">
+        <div class="relative">
+          <input
+            v-model="userSearch"
+            type="text"
+            placeholder="搜索员工..."
+            class="w-full border border-gray-200 rounded-lg pl-8 py-1.5 text-xs bg-gray-50 text-gray-900 placeholder:text-gray-400 focus:border-blue-400 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.12)] outline-none transition-all"
+          />
+          <svg class="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+          </svg>
+        </div>
       </div>
-      <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-medium text-slate-500">累计 Prompt</p>
-        <p class="mt-1 text-2xl font-semibold text-slate-900">{{ formatTokens(stats.totalPrompts) }}</p>
-      </div>
-      <div class="rounded-xl border border-slate-200 bg-white p-4">
-        <p class="text-xs font-medium text-slate-500">累计 Token</p>
-        <p class="mt-1 text-2xl font-semibold text-slate-900">{{ formatTokens(stats.totalTokens) }}</p>
-      </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="mb-4 flex flex-wrap items-end gap-3">
-      <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500">用户</label>
-        <select v-model="filters.userId" class="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-          <option :value="undefined">全部</option>
-          <option v-for="u in users" :key="u.id" :value="u.id">{{ u.realName || u.username }}</option>
-        </select>
-      </div>
-      <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500">开始日期</label>
-        <input v-model="filters.startDate" type="date" class="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-      </div>
-      <div>
-        <label class="mb-1 block text-xs font-medium text-slate-500">结束日期</label>
-        <input v-model="filters.endDate" type="date" class="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-      </div>
-      <button class="rounded-lg bg-[#005d9c] px-4 py-2 text-sm font-medium text-white hover:bg-[#004b80]" @click="applyFilters">搜索</button>
-      <button class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50" @click="resetFilters">重置</button>
-    </div>
-
-    <!-- Error -->
-    <div v-if="error" class="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
-      <span>{{ error }}</span>
-      <button class="text-red-400 hover:text-red-600" @click="error = ''">
-        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-      </button>
-    </div>
-
-    <!-- Table -->
-    <div class="rounded-xl border border-slate-200 bg-white">
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead>
-            <tr class="border-b border-slate-100 text-left">
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">日期</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">用户</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">摘要</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">Prompt</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">Token</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">评分</th>
-              <th class="px-6 py-3 text-xs font-medium text-slate-500">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="r in reports" :key="r.id" class="border-b border-slate-50 text-sm hover:bg-slate-50/50">
-              <td class="px-6 py-3 text-slate-700">{{ formatDate(r.reportDate) }}</td>
-              <td class="px-6 py-3 text-slate-600">{{ r.username }}</td>
-              <td class="px-6 py-3 max-w-[300px] truncate text-slate-500">{{ r.summary }}</td>
-              <td class="px-6 py-3 font-mono text-xs text-slate-500">{{ r.promptCount }}</td>
-              <td class="px-6 py-3 font-mono text-xs text-slate-500">{{ formatTokens(r.tokenCount) }}</td>
-              <td class="px-6 py-3">
-                <span :class="['font-mono text-xs font-medium', getScoreColor(r.score)]">
-                  {{ r.score !== null ? r.score : '-' }}
-                </span>
-              </td>
-              <td class="px-6 py-3">
-                <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-[#005d9c] hover:bg-[#005d9c]/10" @click="openDetail(r)">查看</button>
-              </td>
-            </tr>
-            <tr v-if="reports.length === 0 && !loading">
-              <td colspan="7" class="px-6 py-12 text-center text-sm text-slate-400">暂无日报记录</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Pagination -->
-      <div v-if="total > pageSize" class="flex items-center justify-between border-t border-slate-100 px-6 py-3">
-        <span class="text-xs text-slate-500">共 {{ total }} 条</span>
-        <div class="flex items-center gap-2">
-          <button
-            :disabled="page <= 1"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-            @click="page--"
+      <div class="flex-1 overflow-y-auto py-2">
+        <div class="px-2 mb-1">
+          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider px-2 py-1">员工列表</div>
+        </div>
+        <button
+          v-for="u in filteredUsers"
+          :key="u.id"
+          :class="[
+            'w-full flex items-center gap-2.5 px-3 py-2.5 text-sm rounded-lg mx-1 transition-colors',
+            selectedUserId === u.id
+              ? 'bg-blue-50 text-blue-700 font-medium'
+              : 'hover:bg-gray-50 text-gray-700',
+          ]"
+          style="width:calc(100% - 8px);"
+          @click="selectUser(u.id)"
+        >
+          <div
+            class="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0"
+            :style="{ background: getAvatarColor(u.realName || u.username) }"
           >
-            上一页
-          </button>
-          <span class="text-xs text-slate-500">{{ page }} / {{ Math.ceil(total / pageSize) }}</span>
-          <button
-            :disabled="page >= Math.ceil(total / pageSize)"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-40"
-            @click="page++"
-          >
-            下一页
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Top Users -->
-    <div v-if="stats && stats.topUsers.length > 0" class="mt-6">
-      <div class="rounded-xl border border-slate-200 bg-white p-5">
-        <h3 class="mb-4 text-sm font-semibold text-slate-900">用户工作排行</h3>
-        <div v-for="(u, i) in stats.topUsers" :key="u.userId" class="flex items-center justify-between border-b border-slate-50 py-2.5 last:border-0">
-          <div class="flex items-center gap-3">
-            <span class="flex h-5 w-5 items-center justify-center rounded-full bg-slate-100 text-xs font-medium text-slate-500">{{ i + 1 }}</span>
-            <span class="text-sm text-slate-700">{{ u.username }}</span>
+            {{ (u.realName || u.username).charAt(0) }}
           </div>
-          <div class="flex items-center gap-4 text-xs text-slate-500">
-            <span>{{ u.reportCount }} 份报告</span>
-            <span class="font-mono">{{ formatTokens(u.totalPrompts) }} prompts</span>
-            <span class="font-mono">{{ formatTokens(u.totalTokens) }} tokens</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Detail Dialog -->
-    <div v-if="showDetail" class="fixed inset-0 z-50 flex items-start justify-center pt-[10vh]">
-      <div class="absolute inset-0 bg-black/30" @click="showDetail = false" />
-      <div class="relative w-full max-w-lg max-h-[80vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
-        <div v-if="detailLoading" class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-[#005d9c] border-t-transparent" />
-        </div>
-
-        <template v-else-if="detail">
-          <div class="mb-5 flex items-start justify-between">
-            <div>
-              <h2 class="text-lg font-semibold text-slate-900">{{ detail.username }} 的工作日报</h2>
-              <p class="mt-1 text-xs text-slate-500">{{ formatDate(detail.reportDate) }}</p>
+          <div class="text-left min-w-0">
+            <div class="text-xs font-semibold truncate">{{ u.realName || u.username }}</div>
+            <div :class="['text-xs', selectedUserId === u.id ? 'text-blue-400' : 'text-gray-400']">
+              {{ u.department || '未分组' }}
             </div>
-            <button class="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600" @click="showDetail = false">
-              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </div>
+        </button>
+        <div v-if="filteredUsers.length === 0" class="px-3 py-6 text-center text-xs text-gray-400">
+          无匹配员工
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ Middle: Date List ═══ -->
+    <div class="w-44 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
+      <template v-if="selectedUser">
+        <div class="px-4 py-3 border-b border-gray-100">
+          <div class="text-xs font-semibold text-gray-500">{{ selectedUser.realName || selectedUser.username }} · 工作日历</div>
+        </div>
+        <div class="flex-1 overflow-y-auto py-2 px-2">
+          <div v-if="convLoading" class="px-3 py-8 text-center">
+            <div class="h-5 w-5 mx-auto animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+          </div>
+          <button
+            v-for="dg in dateGroups"
+            :key="dg.date"
+            :class="[
+              'w-full text-left px-3 py-2.5 rounded-lg mb-1 transition-colors',
+              selectedDate === dg.date
+                ? 'bg-blue-50 text-blue-700'
+                : 'hover:bg-gray-50 text-gray-700',
+            ]"
+            @click="selectDate(dg.date)"
+          >
+            <div class="text-xs font-semibold">{{ dg.label }}</div>
+            <div :class="['text-xs mt-0.5', selectedDate === dg.date ? 'text-blue-400' : 'text-gray-400']">
+              {{ dg.count }} 对话
+            </div>
+          </button>
+          <div v-if="!convLoading && dateGroups.length === 0" class="px-3 py-8 text-center text-xs text-gray-400">
+            暂无对话记录
+          </div>
+        </div>
+      </template>
+      <template v-else>
+        <div class="flex items-center justify-center h-full text-xs text-gray-400">
+          请选择员工
+        </div>
+      </template>
+    </div>
+
+    <!-- ═══ Right: Content Area ═══ -->
+    <div class="flex-1 flex flex-col overflow-hidden bg-gray-50">
+
+      <!-- ── Chat Detail View ── -->
+      <template v-if="showChatDetail">
+        <div class="flex flex-1 overflow-hidden">
+          <!-- Messages -->
+          <div class="flex-1 flex flex-col overflow-hidden" style="background:#F8FAFC;">
+            <!-- Chat Header -->
+            <div class="flex items-center gap-3 px-6 py-3.5 border-b border-gray-200 bg-white flex-shrink-0">
+              <button class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 hover:bg-gray-100 border border-gray-200 transition-colors" @click="goBackToRecords">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5 M12 19l-7-7 7-7"/></svg>
+                返回
+              </button>
+              <div class="w-px h-4 bg-gray-200"></div>
+              <div>
+                <div class="text-sm font-semibold text-gray-900">{{ chatDetail?.title || '对话详情' }}</div>
+                <div class="text-xs text-gray-400">
+                  {{ chatDetail?.username }} · {{ formatFullDate(chatDetail?.createTime || '') }} · {{ chatDetail?.modelName }} · {{ chatDetail?.messages?.length || 0 }} 轮
+                </div>
+              </div>
+              <div class="ml-auto flex items-center gap-2 text-xs text-gray-400">
+                <span>{{ formatTokens(chatDetail?.tokenCount || 0) }} tokens</span>
+                <span v-if="reviewData" :class="['px-2 py-0.5 rounded-full text-xs font-semibold', getScoreBadge(reviewData.score)]">
+                  AI 评分 {{ reviewData.score }}
+                </span>
+              </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+              <div v-if="detailLoading" class="flex items-center justify-center py-16">
+                <div class="h-8 w-8 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
+              </div>
+              <template v-else-if="chatDetail">
+                <template v-for="msg in chatDetail.messages" :key="msg.id">
+                  <!-- User message -->
+                  <div v-if="msg.role === 'user'" class="flex justify-end">
+                    <div class="max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-gray-100" style="border-radius:12px 12px 4px 12px;">
+                      {{ msg.content }}
+                    </div>
+                  </div>
+                  <!-- AI message -->
+                  <div v-else class="flex items-start gap-3">
+                    <div class="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 bg-gray-900">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="white"/>
+                      </svg>
+                    </div>
+                    <div class="flex-1 max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-white border border-gray-200" style="border-radius:12px 12px 12px 4px;">
+                      <div v-html="msg.content.replace(/\n/g, '<br>')" />
+                    </div>
+                  </div>
+                </template>
+              </template>
+            </div>
+          </div>
+
+          <!-- Right Analysis Panel -->
+          <div class="w-72 flex-shrink-0 border-l border-gray-200 bg-white overflow-y-auto">
+            <div class="px-5 py-4 border-b border-gray-100">
+              <div class="text-sm font-semibold text-gray-900">Prompt 质量分析</div>
+              <div class="text-xs text-gray-400 mt-0.5">AI 自动评估</div>
+            </div>
+
+            <template v-if="reviewData">
+              <!-- Score Ring -->
+              <div class="flex flex-col items-center py-5 border-b border-gray-100">
+                <div class="relative">
+                  <svg width="88" height="88" viewBox="0 0 88 88">
+                    <circle cx="44" cy="44" r="36" fill="none" stroke="#F3F4F6" stroke-width="8"/>
+                    <circle cx="44" cy="44" r="36" fill="none" :stroke="getScoreRingColor(reviewData.score)" stroke-width="8"
+                      :stroke-dasharray="getScoreRingDash(reviewData.score)" stroke-dashoffset="0" transform="rotate(-90 44 44)"/>
+                  </svg>
+                  <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <div class="text-2xl font-bold text-gray-900">{{ reviewData.score }}</div>
+                    <div class="text-xs text-gray-400">分</div>
+                  </div>
+                </div>
+                <div :class="['text-xs font-semibold mt-1', getScoreColor(reviewData.score)]">
+                  {{ getScoreLabel(reviewData.score) }}
+                </div>
+              </div>
+
+              <!-- Strengths -->
+              <div v-if="reviewData.strengths" class="px-5 py-4 border-b border-gray-100">
+                <div class="text-xs font-semibold text-green-700 mb-2 flex items-center gap-1">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  优点
+                </div>
+                <ul class="space-y-1.5">
+                  <li v-for="(s, i) in reviewData.strengths.split('\n').filter(Boolean)" :key="i" class="text-xs text-gray-600 flex items-start gap-1.5">
+                    <div class="w-1 h-1 rounded-full bg-green-500 mt-1.5 flex-shrink-0"></div>
+                    {{ s.replace(/^[•\-\d.]+\s*/, '') }}
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Weaknesses -->
+              <div v-if="reviewData.weaknesses" class="px-5 py-4 border-b border-gray-100">
+                <div class="text-xs font-semibold text-yellow-700 mb-2 flex items-center gap-1">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  可改进
+                </div>
+                <ul class="space-y-1.5">
+                  <li v-for="(w, i) in reviewData.weaknesses.split('\n').filter(Boolean)" :key="i" class="text-xs text-gray-600 flex items-start gap-1.5">
+                    <div class="w-1 h-1 rounded-full bg-yellow-400 mt-1.5 flex-shrink-0"></div>
+                    {{ w.replace(/^[•\-\d.]+\s*/, '') }}
+                  </li>
+                </ul>
+              </div>
+
+              <!-- Suggestions -->
+              <div v-if="reviewData.suggestions" class="px-5 py-4">
+                <div class="text-xs font-semibold text-blue-700 mb-2 flex items-center gap-1">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4 M12 8h.01"/></svg>
+                  建议
+                </div>
+                <ul class="space-y-1.5">
+                  <li v-for="(s, i) in reviewData.suggestions.split('\n').filter(Boolean)" :key="i" class="text-xs text-gray-600 flex items-start gap-1.5">
+                    <div class="w-1 h-1 rounded-full bg-blue-400 mt-1.5 flex-shrink-0"></div>
+                    {{ s.replace(/^[•\-\d.]+\s*/, '') }}
+                  </li>
+                </ul>
+              </div>
+            </template>
+            <template v-else-if="!detailLoading">
+              <div class="flex flex-col items-center justify-center py-16 text-xs text-gray-400">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" stroke-width="1.5" class="mb-2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                暂无评价数据
+              </div>
+            </template>
+          </div>
+        </div>
+      </template>
+
+      <!-- ── Work Records for Selected Date ── -->
+      <template v-else-if="selectedDateGroup">
+        <div class="flex-1 overflow-y-auto p-5">
+          <!-- Header Row -->
+          <div class="mb-4 flex items-center justify-between">
+            <div>
+              <div class="text-sm font-bold text-gray-900">{{ selectedUser?.realName || selectedUser?.username }} · {{ selectedDateGroup.label }}</div>
+              <div class="text-xs text-gray-500 mt-0.5">工作记录 · {{ selectedDateGroup.count }} 次对话</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="text-xs text-gray-400">共 {{ formatTokens(selectedDateGroup.conversations.reduce((s, c) => s + c.tokenCount, 0)) }} tokens</div>
+            </div>
+          </div>
+
+          <!-- Conversation Cards -->
+          <div class="space-y-2">
+            <button
+              v-for="conv in selectedDateGroup.conversations"
+              :key="conv.id"
+              class="w-full text-left bg-white border border-gray-200 rounded-xl p-4 hover:border-blue-300 transition-all shadow-sm"
+              @click="openChatDetail(conv)"
+            >
+              <div class="flex items-start justify-between mb-2">
+                <div class="flex-1">
+                  <div class="text-sm font-medium text-gray-800">{{ conv.title || '无标题' }}</div>
+                  <div class="text-xs text-gray-400 mt-0.5">
+                    {{ formatFullDate(conv.createTime) }} · {{ conv.modelName }} · {{ conv.messageCount }} 轮
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3 mt-2 text-xs text-gray-400">
+                <span>{{ formatTokens(conv.tokenCount) }} tokens</span>
+                <span>·</span>
+                <span>{{ conv.messageCount }} 轮</span>
+                <span>·</span>
+                <span class="text-blue-500 font-medium">查看详情 →</span>
+              </div>
             </button>
           </div>
+        </div>
+      </template>
 
-          <div class="mb-5 grid grid-cols-3 gap-4">
-            <div class="rounded-lg bg-slate-50 p-3 text-center">
-              <p class="text-xs text-slate-500">Prompt</p>
-              <p class="mt-1 text-lg font-semibold text-slate-900">{{ detail.promptCount }}</p>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3 text-center">
-              <p class="text-xs text-slate-500">Token</p>
-              <p class="mt-1 text-lg font-semibold text-slate-900">{{ formatTokens(detail.tokenCount) }}</p>
-            </div>
-            <div class="rounded-lg bg-slate-50 p-3 text-center">
-              <p class="text-xs text-slate-500">评分</p>
-              <p :class="['mt-1 text-lg font-semibold', getScoreColor(detail.score)]">{{ detail.score !== null ? detail.score : '-' }}</p>
-            </div>
+      <!-- ── No Selection State ── -->
+      <template v-else>
+        <div class="flex items-center justify-center h-full text-sm text-gray-400">
+          <div class="text-center">
+            <svg class="mx-auto mb-3 text-gray-300" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+            </svg>
+            {{ selectedUser ? '请选择日期查看工作记录' : '请选择员工并点击日期查看工作记录' }}
           </div>
-
-          <div class="mb-5">
-            <h4 class="mb-2 text-xs font-semibold uppercase text-slate-500">工作总结</h4>
-            <p class="text-sm leading-relaxed text-slate-700">{{ detail.summary || '暂无总结' }}</p>
-          </div>
-
-          <div v-if="detail.reviewContent">
-            <h4 class="mb-2 text-xs font-semibold uppercase text-slate-500">评价内容</h4>
-            <p class="text-sm leading-relaxed text-slate-700">{{ detail.reviewContent }}</p>
-          </div>
-
-          <p class="mt-5 text-xs text-slate-400">生成时间：{{ formatFullTime(detail.createTime) }}</p>
-        </template>
-      </div>
+        </div>
+      </template>
     </div>
   </div>
 </template>

@@ -13,8 +13,10 @@ export async function list(req: Request, res: Response) {
 
 export async function create(req: Request, res: Response) {
   try {
-    const { userId } = req as any;
-    const result = await apiKeyService.createApiKey(userId);
+    const { targetUserId } = req.body;
+    const result = await apiKeyService.createApiKey(
+      targetUserId ? parseInt(String(targetUserId)) : undefined,
+    );
     res.json({ code: 0, message: '创建成功', data: result });
   } catch (err: any) {
     res.status(400).json({ code: 400, message: err.message, data: null });

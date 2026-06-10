@@ -1,9 +1,4 @@
-import crypto from 'crypto';
 import prisma from '../models/prisma.js';
-
-function hashApiKey(plain: string): string {
-  return crypto.createHash('sha256').update(plain).digest('hex');
-}
 
 function estimateTokens(text: string): number {
   if (!text) return 0;
@@ -11,9 +6,8 @@ function estimateTokens(text: string): number {
 }
 
 export async function authenticateApiKey(plainKey: string) {
-  const hashed = hashApiKey(plainKey);
   const apiKey = await prisma.sysApiKey.findUnique({
-    where: { apiKey: hashed },
+    where: { apiKey: plainKey },
     include: { user: true },
   });
 
@@ -26,37 +20,68 @@ export async function authenticateApiKey(plainKey: string) {
 
 export async function resolveModel(requestedModel?: string, defaultModelId?: number | null) {
   if (requestedModel) {
+    console.log(`[Gateway:resolveModel] Looking up by modelName="${requestedModel}"`);
     const model = await prisma.sysModel.findFirst({
       where: { modelName: requestedModel, enabled: 1 },
     });
-    if (model) return model;
+    if (model) {
+      console.log(`[Gateway:resolveModel] Found by modelName: id=${model.id} name="${model.name}" baseUrl="${model.baseUrl}"`);
+      return model;
+    }
+    console.log(`[Gateway:resolveModel] Not found by modelName="${requestedModel}"`);
   }
 
   if (defaultModelId) {
+    console.log(`[Gateway:resolveModel] Looking up by defaultModelId=${defaultModelId}`);
     const model = await prisma.sysModel.findFirst({
       where: { id: defaultModelId, enabled: 1 },
     });
-    if (model) return model;
+    if (model) {
+      console.log(`[Gateway:resolveModel] Found by defaultModelId: id=${model.id} name="${model.name}"`);
+      return model;
+    }
+    console.log(`[Gateway:resolveModel] Not found by defaultModelId=${defaultModelId}`);
   }
 
-  return prisma.sysModel.findFirst({ where: { enabled: 1 } });
+  console.log(`[Gateway:resolveModel] Fallback: looking for any enabled model`);
+  const fallback = await prisma.sysModel.findFirst({ where: { enabled: 1 } });
+  if (fallback) {
+    console.log(`[Gateway:resolveModel] Fallback found: id=${fallback.id} name="${fallback.name}"`);
+  } else {
+    console.log(`[Gateway:resolveModel] No enabled models in database!`);
+  }
+  return fallback;
 }
 
 export async function forwardToProvider(model: any, body: any) {
-  const baseUrl = model.baseUrl.replace(/\/$/, '');
-  const url = `${baseUrl}/v1/chat/completions`;
+  const baseUrl = (model.baseUrl || '').replace(/\/$/, '');
+  const isAnthropic = baseUrl.endsWith('/anthropic');
 
-  const { model: _reqModel, messages, stream, temperature, max_tokens, session_id, ...rest } = body;
+  const url = isAnthropic
+    ? `${baseUrl}/v1/messages`
+    : `${baseUrl}/v1/chat/completions`;
 
-  const forwardBody: Record<string, unknown> = {
-    model: model.modelName,
-    messages,
-    ...rest,
-  };
+  console.log(`[Gateway:forwardToProvider] Provider: ${isAnthropic ? 'Anthropic' : 'OpenAI'} endpoint, URL: ${url}`);
+  console.log(`[Gateway:forwardToProvider] Using modelName="${model.modelName}", hasApiKey=${!!model.apiKey}, timeout=${model.timeoutSeconds || 60}s`);
 
-  if (temperature !== undefined) forwardBody.temperature = temperature;
-  if (max_tokens !== undefined) forwardBody.max_tokens = max_tokens;
-  if (stream !== undefined) forwardBody.stream = stream;
+  let forwardBody: Record<string, unknown>;
+
+  if (isAnthropic) {
+    // Anthropic format: forward request body, but override model with resolved model name
+    const { session_id, ...rest } = body;
+    forwardBody = { ...rest, model: model.modelName };
+  } else {
+    // OpenAI format: build from parts
+    const { model: _reqModel, messages, stream, temperature, max_tokens, session_id, ...rest } = body;
+    forwardBody = {
+      model: model.modelName,
+      messages,
+      ...rest,
+    };
+    if (temperature !== undefined) forwardBody.temperature = temperature;
+    if (max_tokens !== undefined) forwardBody.max_tokens = max_tokens;
+    if (stream !== undefined) forwardBody.stream = stream;
+  }
 
   const timeoutMs = (model.timeoutSeconds || 60) * 1000;
   const controller = new AbortController();
@@ -153,6 +178,12 @@ export async function logConversation(
   }
 
   const loggedMsgCount = userMessages.filter(m => cleanUserPrompt(m.content || '')).length + (assistantContent ? 1 : 0);
+
+  // If nothing was actually logged (all user messages filtered out, no assistant content), remove empty conversation
+  if (loggedMsgCount === 0) {
+    await prisma.conversation.delete({ where: { id: conversation.id } }).catch(() => {});
+    return;
+  }
 
   await prisma.conversation.update({
     where: { id: conversation.id },

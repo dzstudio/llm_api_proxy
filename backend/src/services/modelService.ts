@@ -6,8 +6,6 @@ export interface CreateModelInput {
   modelName: string;
   baseUrl?: string;
   apiKey?: string;
-  maxTokens?: number;
-  temperature?: number;
   timeoutSeconds?: number;
   isReviewModel?: number;
 }
@@ -18,8 +16,6 @@ export interface UpdateModelInput {
   modelName?: string;
   baseUrl?: string;
   apiKey?: string;
-  maxTokens?: number;
-  temperature?: number;
   timeoutSeconds?: number;
   isReviewModel?: number;
 }
@@ -33,8 +29,6 @@ export async function listModels() {
       modelName: true,
       baseUrl: true,
       enabled: true,
-      maxTokens: true,
-      temperature: true,
       timeoutSeconds: true,
       isReviewModel: true,
       createTime: true,
@@ -44,7 +38,25 @@ export async function listModels() {
   });
 }
 
+async function checkDuplicate(modelName: string, baseUrl: string, excludeId?: number) {
+  const where: any = {
+    modelName,
+    baseUrl: baseUrl || '',
+  }
+  if (excludeId !== undefined) {
+    where.id = { not: excludeId }
+  }
+  const existing = await prisma.sysModel.findFirst({ where })
+  if (existing) {
+    throw new Error(`模型标识 "${modelName}" 与 Base URL 的组合已存在`)
+  }
+}
+
 export async function createModel(input: CreateModelInput) {
+  if (!input.baseUrl) throw new Error('Base URL 不能为空');
+  if (!input.apiKey) throw new Error('API Key 不能为空');
+  await checkDuplicate(input.modelName, input.baseUrl || '')
+
   return prisma.sysModel.create({
     data: {
       name: input.name,
@@ -52,9 +64,7 @@ export async function createModel(input: CreateModelInput) {
       modelName: input.modelName,
       baseUrl: input.baseUrl || '',
       apiKey: input.apiKey || '',
-      enabled: 0,
-      maxTokens: input.maxTokens ?? 4096,
-      temperature: input.temperature ?? 0.7,
+      enabled: 1,
       timeoutSeconds: input.timeoutSeconds ?? 60,
       isReviewModel: input.isReviewModel ?? 0,
     },
@@ -65,8 +75,6 @@ export async function createModel(input: CreateModelInput) {
       modelName: true,
       baseUrl: true,
       enabled: true,
-      maxTokens: true,
-      temperature: true,
       timeoutSeconds: true,
       isReviewModel: true,
       createTime: true,
@@ -85,10 +93,15 @@ export async function updateModel(id: number, input: UpdateModelInput) {
   if (input.modelName !== undefined) data.modelName = input.modelName;
   if (input.baseUrl !== undefined) data.baseUrl = input.baseUrl;
   if (input.apiKey !== undefined) data.apiKey = input.apiKey;
-  if (input.maxTokens !== undefined) data.maxTokens = input.maxTokens;
-  if (input.temperature !== undefined) data.temperature = input.temperature;
   if (input.timeoutSeconds !== undefined) data.timeoutSeconds = input.timeoutSeconds;
   if (input.isReviewModel !== undefined) data.isReviewModel = input.isReviewModel;
+
+  // Check duplicate if modelName or baseUrl changed
+  const newModelName = input.modelName ?? existing.modelName;
+  const newBaseUrl = input.baseUrl ?? existing.baseUrl ?? '';
+  if (input.modelName !== undefined || input.baseUrl !== undefined) {
+    await checkDuplicate(newModelName, newBaseUrl, id);
+  }
 
   return prisma.sysModel.update({
     where: { id },
@@ -100,8 +113,6 @@ export async function updateModel(id: number, input: UpdateModelInput) {
       modelName: true,
       baseUrl: true,
       enabled: true,
-      maxTokens: true,
-      temperature: true,
       timeoutSeconds: true,
       isReviewModel: true,
       createTime: true,

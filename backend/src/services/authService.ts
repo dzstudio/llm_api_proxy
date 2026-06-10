@@ -48,6 +48,20 @@ export async function login(input: LoginInput) {
   };
 }
 
+export async function changePassword(userId: number, currentPassword: string, newPassword: string) {
+  const user = await prisma.sysUser.findUnique({ where: { id: userId } });
+  if (!user) throw new Error('用户不存在');
+
+  const valid = await bcrypt.compare(currentPassword, user.password);
+  if (!valid) throw new Error('当前密码不正确');
+
+  const hashed = await bcrypt.hash(newPassword, 10);
+  await prisma.sysUser.update({
+    where: { id: userId },
+    data: { password: hashed },
+  });
+}
+
 export async function getCurrentUser(userId: number) {
   const user = await prisma.sysUser.findUnique({
     where: { id: userId },

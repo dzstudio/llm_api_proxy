@@ -9,8 +9,6 @@ export interface ModelItem {
   baseUrl: string
   apiKey: string
   enabled: number
-  maxTokens: number
-  temperature: number
   timeoutSeconds: number
   isReviewModel: number
   createTime: string
@@ -23,8 +21,6 @@ export interface CreateModelData {
   modelName: string
   baseUrl?: string
   apiKey?: string
-  maxTokens?: number
-  temperature?: number
   timeoutSeconds?: number
   isReviewModel?: number
 }

@@ -1,10 +1,6 @@
 import crypto from 'crypto';
 import prisma from '../models/prisma.js';
 
-function hashApiKey(plain: string): string {
-  return crypto.createHash('sha256').update(plain).digest('hex');
-}
-
 function generatePlainKey(): string {
   const random = crypto.randomBytes(24).toString('hex');
   return `sk_llm_${random}`;
@@ -38,7 +34,8 @@ export async function listApiKeys(userId: number, role: string) {
     id: key.id,
     userId: key.userId,
     username: userMap.get(key.userId) || '-',
-    apiKey: maskKey(key.apiKey),
+    // Show full key to the key's owner, masked to others/admins
+    apiKey: key.userId === userId ? key.apiKey : maskKey(key.apiKey),
     defaultModelId: key.defaultModelId,
     status: key.status,
     createTime: key.createTime,
@@ -46,14 +43,14 @@ export async function listApiKeys(userId: number, role: string) {
   }));
 }
 
-export async function createApiKey(userId: number) {
+export async function createApiKey(targetUserId?: number) {
+  if (!targetUserId) throw new Error('请指定目标用户');
   const plainKey = generatePlainKey();
-  const hashed = hashApiKey(plainKey);
 
   const record = await prisma.sysApiKey.create({
     data: {
-      userId,
-      apiKey: hashed,
+      userId: targetUserId,
+      apiKey: plainKey,
       status: 1,
     },
   });
@@ -77,11 +74,10 @@ export async function resetApiKey(id: number, userId: number, role: string) {
   }
 
   const plainKey = generatePlainKey();
-  const hashed = hashApiKey(plainKey);
 
   const updated = await prisma.sysApiKey.update({
     where: { id },
-    data: { apiKey: hashed, updateTime: new Date() },
+    data: { apiKey: plainKey, updateTime: new Date() },
   });
 
   return {
@@ -122,7 +118,7 @@ export async function deleteApiKey(id: number, userId: number, role: string) {
   await prisma.sysApiKey.delete({ where: { id } });
 }
 
-function maskKey(hashed: string): string {
-  if (!hashed || hashed.length < 12) return '****';
-  return `${hashed.substring(0, 8)}...${hashed.substring(hashed.length - 8)}`;
+function maskKey(plain: string): string {
+  if (!plain || plain.length < 24) return '****';
+  return `${plain.substring(0, 14)}...${plain.substring(plain.length - 8)}`;
 }

@@ -21,6 +21,27 @@ export async function login(req: Request, res: Response) {
   }
 }
 
+export async function changePassword(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ code: 400, message: '请输入当前密码和新密码', data: null });
+      return;
+    }
+    if (newPassword.length < 6) {
+      res.status(400).json({ code: 400, message: '新密码至少6位', data: null });
+      return;
+    }
+
+    await authService.changePassword(userId, currentPassword, newPassword);
+    res.json({ code: 0, message: '密码修改成功', data: null });
+  } catch (err: any) {
+    res.status(400).json({ code: 400, message: err.message, data: null });
+  }
+}
+
 export async function getCurrentUser(req: Request, res: Response) {
   try {
     const userId = (req as any).userId;

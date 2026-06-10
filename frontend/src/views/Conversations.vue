@@ -214,7 +214,7 @@ onMounted(() => {
         <label class="mb-1 block text-xs font-medium text-slate-500">结束日期</label>
         <input v-model="filters.endDate" type="date" class="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
       </div>
-      <button class="rounded-lg bg-[#005d9c] px-4 py-2 text-sm font-medium text-white hover:bg-[#004b80]" @click="applyFilters">搜索</button>
+      <button class="rounded-lg bg-[#111827] px-4 py-2 text-sm font-medium text-white hover:bg-[#1F2937]" @click="applyFilters">搜索</button>
       <button class="rounded-lg border border-slate-200 px-4 py-2 text-sm text-slate-600 hover:bg-slate-50" @click="resetFilters">重置</button>
     </div>
 
@@ -254,7 +254,7 @@ onMounted(() => {
               <td class="px-6 py-3 text-xs text-slate-400">-</td>
               <td class="px-6 py-3 text-xs text-slate-400">{{ formatTime(c.createTime) }}</td>
               <td class="px-6 py-3">
-                <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-[#005d9c] hover:bg-[#005d9c]/10" @click="openDetail(c)">查看</button>
+                <button class="rounded-lg px-2.5 py-1 text-xs font-medium text-[#111827] hover:bg-[#111827]/10" @click="openDetail(c)">查看</button>
               </td>
             </tr>
             <tr v-if="conversations.length === 0 && !loading">
@@ -324,7 +324,7 @@ onMounted(() => {
       <div class="absolute inset-0 bg-black/30" @click="showDetail = false" />
       <div class="relative w-full max-w-2xl max-h-[80vh] overflow-y-auto rounded-xl bg-white p-6 shadow-xl">
         <div v-if="detailLoading" class="flex items-center justify-center py-12">
-          <div class="h-6 w-6 animate-spin rounded-full border-2 border-[#005d9c] border-t-transparent" />
+          <div class="h-6 w-6 animate-spin rounded-full border-2 border-[#111827] border-t-transparent" />
         </div>
 
         <template v-else-if="detail">
@@ -346,14 +346,14 @@ onMounted(() => {
               :key="msg.id"
               :class="[
                 'rounded-xl p-4',
-                msg.role === 'user' ? 'bg-slate-50 border border-slate-100' : 'bg-[#005d9c]/5 border border-[#005d9c]/10',
+                msg.role === 'user' ? 'bg-slate-50 border border-slate-100' : 'bg-[#111827]/5 border border-[#111827]/10',
               ]"
             >
               <div class="mb-1.5 flex items-center justify-between">
                 <span
                   :class="[
                     'text-xs font-semibold uppercase tracking-wide',
-                    msg.role === 'user' ? 'text-slate-600' : 'text-[#005d9c]',
+                    msg.role === 'user' ? 'text-slate-600' : 'text-[#111827]',
                   ]"
                 >
                   {{ msg.role === 'user' ? '用户输入' : msg.role === 'assistant' ? 'AI 回复' : msg.role }}
@@ -371,7 +371,7 @@ onMounted(() => {
               <button
                 v-if="!review"
                 :disabled="evaluating"
-                class="rounded-lg bg-[#0ea5e9] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0284c7] disabled:opacity-50"
+                class="rounded-lg bg-[#3B82F6] px-3 py-1.5 text-xs font-medium text-white hover:bg-[#0284c7] disabled:opacity-50"
                 @click="handleEvaluate"
               >
                 {{ evaluating ? '评价中...' : '开始评价' }}
@@ -406,7 +406,7 @@ onMounted(() => {
               </div>
 
               <div v-if="review.suggestions">
-                <h5 class="mb-1 text-xs font-semibold text-[#005d9c]">改进建议</h5>
+                <h5 class="mb-1 text-xs font-semibold text-[#111827]">改进建议</h5>
                 <p class="text-sm leading-relaxed text-slate-600">{{ review.suggestions }}</p>
               </div>
             </div>

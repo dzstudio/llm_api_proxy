@@ -29,10 +29,24 @@ export interface ConversationDetail extends ConversationItem {
   messages: MessageItem[]
 }
 
+export interface RecentRecord {
+  id: number
+  username: string
+  modelName: string
+  title: string
+  tokenCount: number
+  messageCount: number
+  createTime: string
+}
+
 export interface ConversationStats {
   totalConversations: number
   totalTokens: number
   totalMessages: number
+  todayConversations: number
+  todayTokens: number
+  monthTokens: number
+  activeUsersToday: number
   topUsers: {
     userId: number
     username: string
@@ -45,6 +59,7 @@ export interface ConversationStats {
     conversationCount: number
     tokenCount: number
   }[]
+  recentRecords: RecentRecord[]
 }
 
 export interface ListQuery {

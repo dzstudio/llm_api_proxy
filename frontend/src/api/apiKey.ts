@@ -24,8 +24,8 @@ export const apiKeyApi = {
   list() {
     return request.get<ApiResponse<{ list: ApiKeyItem[] }>>('/api-keys')
   },
-  create() {
-    return request.post<ApiResponse<ApiKeyCreated>>('/api-keys')
+  create(targetUserId: number) {
+    return request.post<ApiResponse<ApiKeyCreated>>('/api-keys', { targetUserId })
   },
   reset(id: number) {
     return request.post<ApiResponse<ApiKeyCreated>>(`/api-keys/${id}/reset`)

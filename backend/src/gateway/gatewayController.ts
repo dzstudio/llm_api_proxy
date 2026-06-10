@@ -2,21 +2,29 @@ import type { Request, Response } from 'express';
 import * as gatewayService from '../gateway/gatewayService.js';
 
 export async function chatCompletions(req: Request, res: Response) {
+  const requestId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  console.log(`[Gateway:${requestId}] >>> Incoming request`);
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    // Support both Anthropic standard (x-api-key) and OpenAI standard (Authorization: Bearer)
+    let apiKey: string;
+    if (req.headers['x-api-key']) {
+      apiKey = req.headers['x-api-key'] as string;
+    } else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      apiKey = req.headers.authorization.substring(7);
+    } else {
+      console.log(`[Gateway:${requestId}] FAIL: Missing API key (x-api-key or Authorization: Bearer)`);
       res.status(401).json({
         code: 401,
-        message: 'Missing or invalid API key. Use: Authorization: Bearer sk_llm_...',
+        message: 'Missing API key. Use x-api-key or Authorization: Bearer header',
         data: null,
       });
       return;
     }
-
-    const apiKey = authHeader.substring(7);
+    console.log(`[Gateway:${requestId}] API Key prefix: ${apiKey.substring(0, 14)}...`);
     const keyRecord = await gatewayService.authenticateApiKey(apiKey);
 
     if (!keyRecord) {
+      console.log(`[Gateway:${requestId}] FAIL: Invalid or disabled API key`);
       res.status(401).json({
         code: 401,
         message: 'Invalid or disabled API key',
@@ -24,10 +32,13 @@ export async function chatCompletions(req: Request, res: Response) {
       });
       return;
     }
+    console.log(`[Gateway:${requestId}] Auth OK - user=${keyRecord.user.username}(id=${keyRecord.userId}), keyId=${keyRecord.id}`);
 
     const { model: requestedModel, messages, stream } = req.body;
+    console.log(`[Gateway:${requestId}] Body: model="${requestedModel}", stream=${stream}, messages.length=${messages?.length}, keys=[${Object.keys(req.body).join(',')}]`);
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
+      console.log(`[Gateway:${requestId}] FAIL: messages array is empty or missing`);
       res.status(400).json({
         code: 400,
         message: 'messages array is required',
@@ -36,8 +47,10 @@ export async function chatCompletions(req: Request, res: Response) {
       return;
     }
 
+    console.log(`[Gateway:${requestId}] Resolving model: requested="${requestedModel}" defaultModelId=${keyRecord.defaultModelId}`);
     const resolvedModel = await gatewayService.resolveModel(requestedModel, keyRecord.defaultModelId);
     if (!resolvedModel) {
+      console.log(`[Gateway:${requestId}] FAIL: No enabled model found`);
       res.status(400).json({
         code: 400,
         message: 'No enabled model found',
@@ -45,17 +58,21 @@ export async function chatCompletions(req: Request, res: Response) {
       });
       return;
     }
+    console.log(`[Gateway:${requestId}] Resolved model: id=${resolvedModel.id} name="${resolvedModel.name}" modelName="${resolvedModel.modelName}" baseUrl="${resolvedModel.baseUrl}"`);
 
     const response = await gatewayService.forwardToProvider(resolvedModel, req.body);
+    console.log(`[Gateway:${requestId}] Provider response status: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       const errorBody = await response.text();
+      console.log(`[Gateway:${requestId}] Provider ERROR body: ${errorBody.substring(0, 500)}`);
       let errorMsg = `Provider error: ${response.status}`;
       try {
         const parsed = JSON.parse(errorBody);
         errorMsg = parsed.error?.message || parsed.message || errorMsg;
       } catch { /* use default msg */ }
 
+      console.log(`[Gateway:${requestId}] FAIL: ${response.status} - ${errorMsg}`);
       res.status(502).json({ code: 502, message: errorMsg, data: null });
       return;
     }
@@ -76,11 +93,8 @@ export async function chatCompletions(req: Request, res: Response) {
       let fullContent = '';
       let buffer = '';
 
-      // Abort upstream read if client disconnects
-      const abortController = new AbortController();
       req.on('close', () => {
         if (!res.writableEnded) {
-          abortController.abort();
           reader.cancel().catch(() => {});
         }
       });
@@ -97,12 +111,21 @@ export async function chatCompletions(req: Request, res: Response) {
           buffer = lines.pop() || '';
 
           for (const line of lines) {
+            // OpenAI format: data: {"choices":[{"delta":{"content":"..."}}]}
             if (line.startsWith('data: ') && !line.startsWith('data: [DONE]')) {
               try {
                 const json = JSON.parse(line.substring(6));
                 const content = json.choices?.[0]?.delta?.content;
                 if (content) fullContent += content;
-              } catch { /* skip unparseable lines */ }
+              } catch { /* skip */ }
+            }
+            // Anthropic format: data: {"type":"content_block_delta","delta":{"text":"..."}}
+            if (line.startsWith('data: ') && line.includes('"type":"content_block_delta"')) {
+              try {
+                const json = JSON.parse(line.substring(6));
+                const text = json.delta?.text;
+                if (text) fullContent += text;
+              } catch { /* skip */ }
             }
           }
 
@@ -128,7 +151,15 @@ export async function chatCompletions(req: Request, res: Response) {
       ).catch(err => console.error('[Gateway] Failed to log conversation:', err));
     } else {
       const data = await response.json() as any;
-      const assistantContent = data.choices?.[0]?.message?.content || '';
+      // Extract assistant content from either OpenAI or Anthropic format
+      // Anthropic format: content is an array, find the text block (skip thinking blocks)
+      const anthropicTextBlock = (data.content as any[])?.find?.((b: any) => b.type === 'text');
+      const assistantContent =
+        data.choices?.[0]?.message?.content ||    // OpenAI format
+        anthropicTextBlock?.text ||                // Anthropic format: text block
+        '';
+
+      const usage = data.usage || null;
 
       gatewayService.logConversation(
         keyRecord.userId,
@@ -136,16 +167,18 @@ export async function chatCompletions(req: Request, res: Response) {
         req.body.session_id,
         messages,
         assistantContent,
-        data.usage || null,
+        usage,
       ).catch(err => console.error('[Gateway] Failed to log conversation:', err));
 
       res.json(data);
     }
   } catch (err: any) {
+    console.log(`[Gateway:${requestId}] EXCEPTION: name="${err.name}" message="${err.message}"`);
     if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      console.log(`[Gateway:${requestId}] FAIL: 504 Timeout`);
       res.status(504).json({ code: 504, message: 'Gateway request timeout', data: null });
     } else {
-      console.error('[Gateway] Error:', err);
+      console.error(`[Gateway:${requestId}] FAIL: 500 -`, err);
       res.status(500).json({ code: 500, message: err.message || 'Internal gateway error', data: null });
     }
   }
