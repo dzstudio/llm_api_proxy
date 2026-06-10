@@ -102,6 +102,18 @@ export async function forwardToProvider(model: any, body: any) {
   }
 }
 
+// Extract plain text from content that may be a string or an array of content blocks
+function extractTextContent(content: any): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((b: any) => b.type === 'text' && b.text)
+      .map((b: any) => b.text)
+      .join('\n');
+  }
+  return String(content || '');
+}
+
 function cleanUserPrompt(content: string): string {
   return content
     .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
@@ -128,7 +140,7 @@ export async function logConversation(
   const completionTokens = usage?.completion_tokens || estimateTokens(assistantContent);
   const totalTokens = usage?.total_tokens || (promptTokens + completionTokens);
 
-  const firstClean = cleanUserPrompt(userMessages[0]?.content || '');
+  const firstClean = cleanUserPrompt(extractTextContent(userMessages[0]?.content));
   const title = firstClean.slice(0, 100) || 'New Conversation';
 
   let conversation;
@@ -153,7 +165,7 @@ export async function logConversation(
 
   // Only log cleaned user messages (skip system/tool/assistant messages from provider request)
   for (const msg of userMessages) {
-    const cleaned = cleanUserPrompt(msg.content || '');
+    const cleaned = cleanUserPrompt(extractTextContent(msg.content));
     if (!cleaned) continue;
     await prisma.message.create({
       data: {
@@ -177,7 +189,7 @@ export async function logConversation(
     });
   }
 
-  const loggedMsgCount = userMessages.filter(m => cleanUserPrompt(m.content || '')).length + (assistantContent ? 1 : 0);
+  const loggedMsgCount = userMessages.filter(m => cleanUserPrompt(extractTextContent(m.content))).length + (assistantContent ? 1 : 0);
 
   // If nothing was actually logged (all user messages filtered out, no assistant content), remove empty conversation
   if (loggedMsgCount === 0) {
