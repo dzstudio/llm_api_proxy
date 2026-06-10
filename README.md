@@ -59,6 +59,157 @@ docker compose down
 
 数据持久化在 `./data` 目录，日志在 `./logs` 目录。
 
+---
+
+## 服务器部署完整流程
+
+以下以 Ubuntu 22.04 为例，其他 Linux 发行版类似。
+
+### 1. 环境准备
+
+```bash
+# 安装 Docker（如已安装可跳过）
+curl -fsSL https://get.docker.com | bash
+sudo usermod -aG docker $USER
+# 重新登录使权限生效
+
+# 安装 Git
+sudo apt install git -y
+```
+
+### 2. 拉取项目
+
+```bash
+git clone <你的仓库地址> /opt/llm_api_proxy
+cd /opt/llm_api_proxy
+```
+
+### 3. 配置环境变量（可选）
+
+```bash
+# 复制并编辑环境变量（可选，默认值可直接使用）
+cp .env.example .env  # 如没有 .env.example，直接创建 .env
+nano .env
+```
+
+关键变量：
+
+| 变量 | 说明 | 建议 |
+|------|------|------|
+| `JWT_SECRET` | JWT 签名密钥 | **务必修改为随机字符串** |
+| `ADMIN_DEFAULT_PASSWORD` | 管理员初始密码 | **务必修改，首次登录后应立即改密** |
+| `JWT_EXPIRATION` | 登录有效期 | 默认 24h |
+
+### 4. 启动服务
+
+```bash
+docker compose up -d
+```
+
+访问 `http://<服务器IP>:8080`，使用管理员账号登录。
+
+### 5. 首次登录注意事项
+
+- 默认用户名：`admin`，密码：`welcome123`（或你在 `.env` 中设置的值）
+- **首次登录后立即修改管理员密码**（系统设置 → 修改密码）
+- 在「员工管理」中为团队成员创建账号
+- 在「模型管理」中配置上游 LLM 模型
+- 在「API Key 管理」中为员工创建 API Key
+
+---
+
+## 后续更新流程
+
+在服务器上执行以下命令拉取新代码并重新部署：
+
+```bash
+cd /opt/llm_api_proxy
+
+# 拉取最新代码
+git pull
+
+# 重新构建并启动（数据库文件通过 volume 持久化，不会丢失）
+docker compose up -d --build
+
+# 查看启动日志确认无报错
+docker compose logs -f
+```
+
+> **重要：** 数据库文件 `data/app.db` 通过 Docker volume 挂载到宿主机，重新构建容器不会清空数据。每次启动时容器会自动执行 `prisma migrate deploy`，确保数据库结构同步，不会造成数据丢失。
+
+---
+
+## 绑定域名访问
+
+推荐使用 Nginx 反向代理，将域名指向服务器后，配置 SSL 证书实现 HTTPS 访问。
+
+### 1. 解析域名
+
+在 DNS 服务商处添加 A 记录，将域名（如 `ai.yourdomain.com`）指向服务器 IP。
+
+### 2. 安装 Nginx 和 Certbot
+
+```bash
+sudo apt install nginx certbot python3-certbot-nginx -y
+```
+
+### 3. 配置 Nginx 反向代理
+
+创建配置文件 `/etc/nginx/sites-available/llm-api-proxy`：
+
+```nginx
+server {
+    listen 80;
+    server_name ai.yourdomain.com;   # 替换为你的域名
+
+    # Web 管理后台 + LLM Gateway API
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE 流式响应支持（LLM Gateway 需要）
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+        proxy_send_timeout 3600s;
+    }
+}
+```
+
+启用配置：
+
+```bash
+sudo ln -s /etc/nginx/sites-available/llm-api-proxy /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
+### 4. 配置 SSL 证书
+
+```bash
+sudo certbot --nginx -d ai.yourdomain.com
+```
+
+按提示操作，Certbot 会自动修改 Nginx 配置并获取 Let's Encrypt 免费证书。
+
+### 5. 验证
+
+访问 `https://ai.yourdomain.com`，确认 Web 管理后台正常显示。
+
+### 域名下的 Gateway 接入信息
+
+前端页面会自动根据当前访问域名展示对应的 Gateway 地址。例如绑定了 `https://ai.yourdomain.com`：
+
+- **接入地址（CC-Switch / Claude Code）：** `https://ai.yourdomain.com/api/llm`
+- **Anthropic 兼容调用：** `https://ai.yourdomain.com/api/llm/v1/messages`
+- **OpenAI 兼容调用：** `https://ai.yourdomain.com/api/llm/v1/chat/completions`
+
+员工在「接入信息」页面看到的 curl 示例也会自动使用当前域名，无需手动修改。
+
 ### 环境变量
 
 | 变量 | 默认值 | 说明 |
