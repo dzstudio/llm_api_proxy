@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { conversationApi } from '@/api/conversation'
@@ -75,6 +75,34 @@ onMounted(async () => {
 
 function goToRecords() {
   router.push('/work-logs')
+}
+
+// ── Pie chart helpers ──
+const chartColors = ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B', '#EF4444', '#EC4899', '#6366F1', '#14B8A6']
+
+const circumference = 2 * Math.PI * 56 // ~352
+
+const totalConvCount = computed(() =>
+  convStats.value?.modelUsage?.reduce((s, m) => s + m.conversationCount, 0) ?? 0,
+)
+
+function pct(count: number) {
+  return totalConvCount.value > 0 ? Math.round((count / totalConvCount.value) * 100) : 0
+}
+
+function getSliceDash(_m: any, i: number) {
+  const p = pct(convStats.value!.modelUsage[i].conversationCount)
+  const len = (p / 100) * circumference
+  return `${len} ${circumference - len}`
+}
+
+function getSliceOffset(i: number) {
+  let offset = 0
+  for (let j = 0; j < i; j++) {
+    const p = pct(convStats.value!.modelUsage[j].conversationCount)
+    offset += (p / 100) * circumference
+  }
+  return offset
 }
 </script>
 
@@ -166,18 +194,39 @@ function goToRecords() {
         </div>
         <div class="p-5">
           <div v-if="!convStats?.modelUsage?.length" class="py-8 text-center text-sm text-gray-400">暂无数据</div>
-          <div v-else class="space-y-3">
-            <div v-for="m in convStats.modelUsage" :key="m.modelId" class="flex items-center justify-between text-xs">
-              <div class="flex items-center gap-1.5">
-                <div class="w-2.5 h-2.5 rounded-full" :style="{ background: ['#3B82F6', '#8B5CF6', '#10B981', '#F59E0B'][convStats.modelUsage.indexOf(m) % 4] }"></div>
-                <span class="text-gray-600">{{ m.modelName }}</span>
+          <template v-else>
+            <!-- Donut Chart -->
+            <div class="flex items-center gap-5">
+              <div class="relative flex-shrink-0" style="width:140px;height:140px">
+                <svg viewBox="0 0 140 140" width="140" height="140" style="transform:rotate(-90deg)">
+                  <circle cx="70" cy="70" r="56" fill="none" stroke="#F3F4F6" stroke-width="24" />
+                  <template v-for="(m, i) in convStats.modelUsage" :key="m.modelId">
+                    <circle
+                      cx="70" cy="70" r="56"
+                      fill="none"
+                      :stroke="chartColors[i % chartColors.length]"
+                      stroke-width="24"
+                      :stroke-dasharray="getSliceDash(m, i)"
+                      :stroke-dashoffset="getSliceOffset(i)"
+                    />
+                  </template>
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                  <div class="text-2xl font-bold text-gray-900">{{ totalConvCount }}</div>
+                  <div class="text-xs text-gray-400">总会话</div>
+                </div>
               </div>
-              <div class="flex items-center gap-3">
-                <span class="text-gray-400">{{ m.conversationCount }} 次</span>
-                <span class="font-semibold text-gray-800 font-mono">{{ formatTokens(m.tokenCount) }}</span>
+              <div class="flex-1 space-y-2 min-w-0">
+                <div v-for="(m, i) in convStats.modelUsage" :key="m.modelId" class="flex items-center justify-between text-xs">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <div class="w-2.5 h-2.5 rounded-full flex-shrink-0" :style="{ background: chartColors[i % chartColors.length] }"></div>
+                    <span class="text-gray-600 truncate">{{ m.modelName }}</span>
+                  </div>
+                  <span class="text-gray-800 font-semibold flex-shrink-0 ml-2">{{ pct(m.conversationCount) }}%</span>
+                </div>
               </div>
             </div>
-          </div>
+          </template>
         </div>
       </div>
     </div>
