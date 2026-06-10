@@ -255,8 +255,19 @@ onMounted(fetchUsers)
     <!-- ═══ Middle: Date List ═══ -->
     <div class="w-44 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col overflow-hidden">
       <template v-if="selectedUser">
-        <div class="px-4 py-3 border-b border-gray-100">
+        <div class="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <div class="text-xs font-semibold text-gray-500">{{ selectedUser.realName || selectedUser.username }} · 工作日历</div>
+          <button
+            class="inline-flex items-center justify-center w-6 h-6 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+            :class="{ 'animate-spin': convLoading }"
+            @click="selectedUserId && selectUser(selectedUserId)"
+            title="刷新"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="23 4 23 10 17 10" />
+              <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+            </svg>
+          </button>
         </div>
         <div class="flex-1 overflow-y-auto py-2 px-2">
           <div v-if="convLoading" class="px-3 py-8 text-center">
