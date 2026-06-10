@@ -339,8 +339,11 @@ onMounted(fetchUsers)
                 <template v-for="msg in chatDetail.messages" :key="msg.id">
                   <!-- User message -->
                   <div v-if="msg.role === 'user'" class="flex justify-end">
-                    <div class="max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-gray-100" style="border-radius:12px 12px 4px 12px;">
-                      {{ msg.content }}
+                    <div>
+                      <div class="max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-gray-100" style="border-radius:12px 12px 4px 12px;">
+                        {{ msg.content }}
+                      </div>
+                      <div class="text-right text-xs text-gray-400 mt-1 mr-1">{{ formatFullDate(msg.createTime) }}</div>
                     </div>
                   </div>
                   <!-- AI message -->
@@ -350,8 +353,11 @@ onMounted(fetchUsers)
                         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="white"/>
                       </svg>
                     </div>
-                    <div class="flex-1 max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-white border border-gray-200" style="border-radius:12px 12px 12px 4px;">
-                      <div v-html="msg.content.replace(/\n/g, '<br>')" />
+                    <div>
+                      <div class="flex-1 max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-white border border-gray-200" style="border-radius:12px 12px 12px 4px;">
+                        <div v-html="msg.content.replace(/\n/g, '<br>')" />
+                      </div>
+                      <div class="text-xs text-gray-400 mt-1 ml-2">{{ formatFullDate(msg.createTime) }}</div>
                     </div>
                   </div>
                 </template>
