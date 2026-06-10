@@ -1,4 +1,9 @@
 import prisma from '../models/prisma.js';
+import crypto from 'crypto';
+
+function simpleHash(input: string): string {
+  return crypto.createHash('md5').update(input).digest('hex').slice(0, 12);
+}
 
 function estimateTokens(text: string): number {
   if (!text) return 0;
@@ -114,13 +119,24 @@ function extractTextContent(content: any): string {
   return String(content || '');
 }
 
+// Claude Code wraps user prompts with these system XML tags — strip them
+const SYSTEM_TAGS = [
+  'system-reminder',
+  'command-name',
+  'command-message',
+  'user-prompt-submit-hook',
+  'task-notification',
+];
+
 function cleanUserPrompt(content: string): string {
-  return content
-    .replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, '')
-    .replace(/<command-name>[\s\S]*?<\/command-name>/g, '')
-    .replace(/<user-prompt-submit-hook>[\s\S]*?<\/user-prompt-submit-hook>/g, '')
-    .replace(/<system-reminder>[\s\S]*$/g, '')
-    .trim();
+  let result = content;
+  for (const tag of SYSTEM_TAGS) {
+    // Fully enclosed tags: <tag>...</tag>
+    result = result.replace(new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, 'g'), '');
+  }
+  // Unclosed <system-reminder> that runs to end of string
+  result = result.replace(/<system-reminder>[\s\S]*$/g, '');
+  return result.trim();
 }
 
 export async function logConversation(
@@ -143,6 +159,13 @@ export async function logConversation(
   const firstClean = cleanUserPrompt(extractTextContent(userMessages[0]?.content));
   const title = firstClean.slice(0, 100) || 'New Conversation';
 
+  // If no session_id provided (Claude Code doesn't send one), auto-generate
+  // from first user message — same conversation thread always has same first msg
+  if (!sessionId && userMessages.length > 0) {
+    sessionId = `auto-${userId}-${simpleHash(firstClean)}`;
+    console.log(`[Gateway:logConversation] Auto-generated sessionId: ${sessionId}`);
+  }
+
   let conversation;
   if (sessionId) {
     conversation = await prisma.conversation.findFirst({
@@ -163,10 +186,24 @@ export async function logConversation(
     });
   }
 
+  // Dedup: fetch existing user message contents to avoid re-logging duplicates
+  // (Claude Code re-sends full conversation history on every request)
+  const existingContents = new Set(
+    conversation.id
+      ? (await prisma.message.findMany({
+          where: { conversationId: conversation.id, role: 'user' },
+          select: { content: true },
+        })).map((m: { content: string | null }) => m.content)
+      : [],
+  );
+
   // Only log cleaned user messages (skip system/tool/assistant messages from provider request)
+  let newUserMsgCount = 0;
   for (const msg of userMessages) {
     const cleaned = cleanUserPrompt(extractTextContent(msg.content));
-    if (!cleaned) continue;
+    if (!cleaned || existingContents.has(cleaned)) continue;
+    newUserMsgCount++;
+    existingContents.add(cleaned); // Track in-memory to avoid dupes within same batch
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -189,7 +226,7 @@ export async function logConversation(
     });
   }
 
-  const loggedMsgCount = userMessages.filter(m => cleanUserPrompt(extractTextContent(m.content))).length + (assistantContent ? 1 : 0);
+  const loggedMsgCount = newUserMsgCount + (assistantContent ? 1 : 0);
 
   // If nothing was actually logged (all user messages filtered out, no assistant content), remove empty conversation
   if (loggedMsgCount === 0) {
