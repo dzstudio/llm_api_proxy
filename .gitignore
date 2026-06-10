@@ -23,5 +23,5 @@ logs/
 *.log
 
 # Environment
-.env
 .env.*
+!.env.example

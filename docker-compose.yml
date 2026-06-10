@@ -5,13 +5,13 @@ services:
       dockerfile: Dockerfile
     container_name: llm-api-proxy
     ports:
-      - "8080:8080"
+      - "8088:8088"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
     environment:
       - NODE_ENV=production
-      - PORT=8080
+      - PORT=8088
       - JWT_SECRET=${JWT_SECRET:-llm-api-proxy-dev-secret-change-me}
       - JWT_EXPIRATION=${JWT_EXPIRATION:-24h}
       - ADMIN_DEFAULT_USERNAME=${ADMIN_DEFAULT_USERNAME:-admin}
