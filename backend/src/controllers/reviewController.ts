@@ -19,12 +19,15 @@ export async function evaluate(req: Request, res: Response) {
 export async function getByConversation(req: Request, res: Response) {
   try {
     const conversationId = parseInt(String(req.params.conversationId));
+    const userId = (req as any).userId;
+    const role = (req as any).role;
+
     if (isNaN(conversationId)) {
       res.status(400).json({ code: 400, message: '参数错误', data: null });
       return;
     }
 
-    const data = await reviewService.getReviewByConversation(conversationId);
+    const data = await reviewService.getReviewByConversation(conversationId, role === 'ADMIN' ? undefined : userId);
     if (!data) {
       res.json({ code: 0, message: 'success', data: null });
       return;

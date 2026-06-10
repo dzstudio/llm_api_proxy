@@ -165,17 +165,23 @@ export async function evaluateConversation(conversationId: number) {
   });
 }
 
-export async function getReviewByConversation(conversationId: number) {
+export async function getReviewByConversation(conversationId: number, userId?: number) {
   const review = await prisma.promptReview.findFirst({
     where: { conversationId },
     include: {
       reviewModel: {
         select: { id: true, name: true, modelName: true },
       },
+      conversation: {
+        select: { userId: true },
+      },
     },
   });
 
   if (!review) return null;
+
+  // Non-admin users can only view their own conversation reviews
+  if (userId && review.conversation.userId !== userId) return null;
 
   return {
     id: review.id,

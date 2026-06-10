@@ -4,11 +4,12 @@ import { adminGuard } from '../middleware/auth.js';
 
 const router = Router();
 
-router.use(adminGuard);
+// Admin-only routes
+router.get('/', adminGuard, reviewController.list);
+router.get('/stats', adminGuard, reviewController.stats);
+router.post('/evaluate/:conversationId', adminGuard, reviewController.evaluate);
 
-router.get('/', reviewController.list);
-router.get('/stats', reviewController.stats);
-router.post('/evaluate/:conversationId', reviewController.evaluate);
+// Both roles: users see own reviews, admins see all (filtered in controller)
 router.get('/:conversationId', reviewController.getByConversation);
 
 export default router;
