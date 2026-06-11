@@ -35,7 +35,7 @@ export async function listApiKeys(userId: number, role: string) {
     userId: key.userId,
     username: userMap.get(key.userId) || '-',
     // Show full key to the key's owner, masked to others/admins
-    apiKey: key.userId === userId ? key.apiKey : maskKey(key.apiKey),
+    apiKey: (role === 'ADMIN' || key.userId === userId) ? key.apiKey : maskKey(key.apiKey),
     defaultModelId: key.defaultModelId,
     status: key.status,
     createTime: key.createTime,

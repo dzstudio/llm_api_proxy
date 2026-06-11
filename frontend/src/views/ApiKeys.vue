@@ -86,11 +86,26 @@ async function handleGenerate() {
   }
 }
 
-function copyKey(keyText?: string) {
+async function copyKey(keyText?: string) {
   const text = keyText || generatedKey.value?.apiKey
   if (!text) return
-  navigator.clipboard.writeText(text)
-  showToast('复制成功')
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const textarea = document.createElement('textarea')
+      textarea.value = text
+      textarea.style.position = 'fixed'
+      textarea.style.left = '-9999px'
+      document.body.appendChild(textarea)
+      textarea.select()
+      document.execCommand('copy')
+      document.body.removeChild(textarea)
+    }
+    showToast('复制成功')
+  } catch {
+    showToast('复制失败')
+  }
 }
 
 function showToast(msg: string) {
@@ -227,7 +242,13 @@ onMounted(() => {
               <td class="px-6 py-3 font-medium text-slate-900">{{ key.username }}</td>
               <td class="px-6 py-3">
                 <div class="flex items-center gap-2">
-                  <code class="font-mono text-xs text-slate-500 truncate max-w-[280px]">{{ key.apiKey }}</code>
+                  <code class="font-mono text-xs text-slate-500 truncate max-w-[240px]">{{ key.apiKey }}</code>
+                  <button
+                    class="flex-shrink-0 rounded px-2 py-0.5 text-xs text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                    @click="copyKey(key.apiKey)"
+                  >
+                    复制
+                  </button>
                 </div>
               </td>
               <td class="px-6 py-3">

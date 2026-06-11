@@ -36,7 +36,10 @@ async function fetchData() {
       models.value = modelRes.data.data.list
     }
     if (keyRes?.data?.code === 0) {
-      apiKeys.value = keyRes.data.data.list
+      const allKeys = Array.isArray(keyRes.data.data) ? keyRes.data.data : keyRes.data.data.list
+      if (allKeys) {
+        apiKeys.value = allKeys.filter((k: ApiKeyItem) => k.userId === userInfo.value?.id)
+      }
     }
   } finally {
     loading.value = false

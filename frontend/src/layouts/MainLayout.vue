@@ -40,7 +40,7 @@ const navSections = [
 
 const isAdmin = computed(() => authStore.userInfo?.role === 'ADMIN')
 const adminOnlyPaths = ['/employees', '/models', '/keys', '/audit']
-const employeeOnlyPaths = ['/my-access']
+const employeeOnlyPaths: string[] = []
 
 function isVisible(path: string) {
   if (adminOnlyPaths.includes(path)) return isAdmin.value

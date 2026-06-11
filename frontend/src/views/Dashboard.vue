@@ -117,7 +117,7 @@ function getSliceOffset(i: number) {
     </div>
 
     <!-- Stat Cards -->
-    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6">
       <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
         <div class="text-xs font-medium text-gray-500 mb-2">今日会话数</div>
         <div class="text-2xl font-bold text-gray-900">{{ convStats?.todayConversations ?? '--' }}</div>
@@ -128,6 +128,18 @@ function getSliceOffset(i: number) {
         <div class="text-2xl font-bold text-gray-900">{{ convStats ? formatTokens(convStats.todayTokens) : '--' }}</div>
         <div class="text-xs text-gray-400 mt-1">
           平均 {{ convStats?.todayConversations ? formatTokens(Math.round(convStats.todayTokens / convStats.todayConversations)) : '--' }} / 会话
+        </div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 mb-2">昨日会话数</div>
+        <div class="text-2xl font-bold text-gray-900">{{ convStats?.yesterdayConversations ?? '--' }}</div>
+        <div class="text-xs text-gray-400 mt-1">昨日</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 mb-2">昨日 Token</div>
+        <div class="text-2xl font-bold text-gray-900">{{ convStats ? formatTokens(convStats.yesterdayTokens) : '--' }}</div>
+        <div class="text-xs text-gray-400 mt-1">
+          平均 {{ convStats?.yesterdayConversations ? formatTokens(Math.round(convStats.yesterdayTokens / convStats.yesterdayConversations)) : '--' }} / 会话
         </div>
       </div>
       <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">

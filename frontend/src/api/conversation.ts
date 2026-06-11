@@ -45,6 +45,8 @@ export interface ConversationStats {
   totalMessages: number
   todayConversations: number
   todayTokens: number
+  yesterdayConversations: number
+  yesterdayTokens: number
   monthTokens: number
   activeUsersToday: number
   topUsers: {

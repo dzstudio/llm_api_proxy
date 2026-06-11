@@ -109,11 +109,14 @@ export async function getConversationStats() {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const todayEnd = new Date(todayStart);
   todayEnd.setDate(todayEnd.getDate() + 1);
+  const yesterdayStart = new Date(todayStart);
+  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const [
     totalConversations, totalTokens, totalMessages,
     todayConversations, todayTokensAgg, monthTokensAgg, activeUsersToday,
+    yesterdayConversations, yesterdayTokensAgg,
     topUsers, modelUsage,
     recentRecords,
   ] = await Promise.all([
@@ -132,6 +135,11 @@ export async function getConversationStats() {
     prisma.conversation.groupBy({
       by: ['userId'],
       where: { createTime: { gte: todayStart, lt: todayEnd } },
+    }),
+    prisma.conversation.count({ where: { createTime: { gte: yesterdayStart, lt: todayStart } } }),
+    prisma.conversation.aggregate({
+      where: { createTime: { gte: yesterdayStart, lt: todayStart } },
+      _sum: { tokenCount: true },
     }),
     prisma.conversation.groupBy({
       by: ['userId'],
@@ -175,6 +183,8 @@ export async function getConversationStats() {
     totalMessages: totalMessages._sum.messageCount || 0,
     todayConversations,
     todayTokens: todayTokensAgg._sum.tokenCount || 0,
+    yesterdayConversations,
+    yesterdayTokens: yesterdayTokensAgg._sum.tokenCount || 0,
     monthTokens: monthTokensAgg._sum.tokenCount || 0,
     activeUsersToday: activeUsersToday.length,
     topUsers: topUsers.map(u => ({
