@@ -238,6 +238,7 @@ export async function logConversation(
         role: 'assistant',
         content: assistantContent.length > 8192 ? assistantContent.slice(0, 8192) + '…[已截取]' : assistantContent,
         tokens: completionTokens,
+        promptTokens: usage?.prompt_tokens || null,
       },
     });
   }

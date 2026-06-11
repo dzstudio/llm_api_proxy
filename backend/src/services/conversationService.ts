@@ -165,8 +165,8 @@ export async function getConversationStats() {
       },
     }),
     // Fetch conversations for today's cost calculation — find conversations that
-    // have messages today, and only count today's messages. Uses message-level
-    // createTime filtering so continuing conversations don't bleed into today.
+    // have messages today, and only count today's messages. Assistant messages
+    // carry real API prompt_tokens + completion_tokens (via tokens field).
     prisma.conversation.findMany({
       where: {
         modelId: { not: null },
@@ -176,7 +176,7 @@ export async function getConversationStats() {
         model: { select: { modelName: true } },
         messages: {
           where: { createTime: { gte: todayStart, lt: todayEnd } },
-          select: { role: true, tokens: true },
+          select: { role: true, tokens: true, promptTokens: true },
         },
       },
     }),
@@ -190,7 +190,7 @@ export async function getConversationStats() {
         model: { select: { modelName: true } },
         messages: {
           where: { createTime: { gte: yesterdayStart, lt: todayStart } },
-          select: { role: true, tokens: true },
+          select: { role: true, tokens: true, promptTokens: true },
         },
       },
     }),
@@ -250,13 +250,12 @@ export async function getConversationStats() {
 }
 
 // Compute daily cost from messages created on the target day.
-// Assistant message tokens are real API completion_tokens.
-// User message tokens are estimated (text.length/4) and represent new user input only
-// (not the full context re-sent each API call), so prompt cost will be conservative.
+// Assistant messages carry real API prompt_tokens and completion_tokens (tokens).
+// User message tokens are estimates (text.length/4) — only used as prompt fallback.
 function computeDailyCost(
   conversations: {
     model: { modelName: string } | null;
-    messages: { role: string; tokens: number }[];
+    messages: { role: string; tokens: number; promptTokens: number | null }[];
   }[],
 ): number {
   const modelTokens: Record<string, { prompt: number; completion: number }> = {};
@@ -269,8 +268,12 @@ function computeDailyCost(
     let completionSum = 0;
     for (const msg of conv.messages) {
       if (msg.role === 'assistant') {
-        completionSum += msg.tokens;
+        completionSum += msg.tokens; // real API completion_tokens
+        if (msg.promptTokens) {
+          promptSum += msg.promptTokens; // real API prompt_tokens
+        }
       } else if (msg.role === 'user') {
+        // User messages as prompt fallback (estimated tokens, typically small)
         promptSum += msg.tokens;
       }
     }
