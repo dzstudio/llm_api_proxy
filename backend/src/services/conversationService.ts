@@ -272,8 +272,14 @@ function computeDailyCost(
   }
 
   let totalCost = 0;
+  const costDetails: string[] = [];
   for (const [modelName, tokens] of Object.entries(modelTokens)) {
-    totalCost += calculateCost(modelName, tokens.prompt, tokens.completion);
+    const cost = calculateCost(modelName, tokens.prompt, tokens.completion);
+    totalCost += cost;
+    costDetails.push(`${modelName}: prompt=${tokens.prompt} comp=${tokens.completion} cost=¥${cost.toFixed(2)}`);
+  }
+  if (costDetails.length > 0) {
+    console.log(`[CostCalc] ${new Date().toISOString().slice(0, 10)} ${costDetails.join(' | ')} total=¥${totalCost.toFixed(2)}`);
   }
   return Math.round(totalCost * 100) / 100;
 }
