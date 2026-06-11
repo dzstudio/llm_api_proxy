@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-echo "[Entrypoint] Syncing database schema..."
+echo "[Entrypoint] Running database migrations..."
 cd /app/backend
-npx prisma db push --schema=prisma/schema.prisma
-echo "[Entrypoint] Schema sync complete. Starting application..."
+npx prisma migrate deploy --schema=prisma/schema.prisma
+echo "[Entrypoint] Migrations complete. Starting application..."
 
 exec node dist/index.js
