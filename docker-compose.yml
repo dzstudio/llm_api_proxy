@@ -7,7 +7,7 @@ services:
     ports:
       - "8088:8088"
     volumes:
-      - llm-api-proxy-data:/app/data
+      - ./data:/app/data
       - ./logs:/app/logs
       - ./backend/dist:/app/backend/dist
       - ./frontend/dist:/app/frontend/dist
@@ -20,6 +20,3 @@ services:
       - ADMIN_DEFAULT_USERNAME=${ADMIN_DEFAULT_USERNAME:-admin}
       - ADMIN_DEFAULT_PASSWORD=${ADMIN_DEFAULT_PASSWORD:-welcome123}
     restart: unless-stopped
-
-volumes:
-  llm-api-proxy-data:
