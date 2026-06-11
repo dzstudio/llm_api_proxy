@@ -92,7 +92,28 @@ export async function chatCompletions(req: Request, res: Response) {
       const decoder = new TextDecoder();
       let fullContent = '';
       let buffer = '';
-      let streamUsage: any = null; // Capture usage from final streaming chunk
+      let streamUsageRaw: any = null; // Raw usage from streaming chunk
+
+      // DeepSeek streaming uses different field names: input_tokens/output_tokens/cache_read_input_tokens
+      // vs standard prompt_tokens/completion_tokens/total_tokens. Normalize to standard format.
+      function normalizeUsage(raw: any) {
+        if (!raw) return null;
+        // Standard format (OpenAI/Anthropic)
+        if (raw.prompt_tokens !== undefined || raw.total_tokens !== undefined) {
+          return {
+            prompt_tokens: raw.prompt_tokens || 0,
+            completion_tokens: raw.completion_tokens || 0,
+            total_tokens: raw.total_tokens || (raw.prompt_tokens || 0) + (raw.completion_tokens || 0),
+          };
+        }
+        // DeepSeek streaming format: input_tokens + cache_read_input_tokens + output_tokens
+        if (raw.input_tokens !== undefined || raw.output_tokens !== undefined) {
+          const prompt = (raw.input_tokens || 0) + (raw.cache_read_input_tokens || 0);
+          const completion = raw.output_tokens || 0;
+          return { prompt_tokens: prompt, completion_tokens: completion, total_tokens: prompt + completion };
+        }
+        return null;
+      }
 
       req.on('close', () => {
         if (!res.writableEnded) {
@@ -118,8 +139,7 @@ export async function chatCompletions(req: Request, res: Response) {
                 const json = JSON.parse(line.substring(6));
                 const content = json.choices?.[0]?.delta?.content;
                 if (content) fullContent += content;
-                // DeepSeek (OpenAI-compatible) streaming: last chunk includes usage
-                if (json.usage) streamUsage = json.usage;
+                if (json.usage) streamUsageRaw = json.usage;
               } catch { /* skip */ }
             }
             // Anthropic format: data: {"type":"content_block_delta","delta":{"text":"..."}}
@@ -128,7 +148,7 @@ export async function chatCompletions(req: Request, res: Response) {
                 const json = JSON.parse(line.substring(6));
                 const text = json.delta?.text;
                 if (text) fullContent += text;
-                if (json.usage) streamUsage = json.usage;
+                if (json.usage) streamUsageRaw = json.usage;
               } catch { /* skip */ }
             }
           }
@@ -149,7 +169,7 @@ export async function chatCompletions(req: Request, res: Response) {
               const json = JSON.parse(line.substring(6));
               const content = json.choices?.[0]?.delta?.content;
               if (content) fullContent += content;
-              if (json.usage) streamUsage = json.usage;
+              if (json.usage) streamUsageRaw = json.usage;
             } catch { /* skip */ }
           }
         }
@@ -159,8 +179,9 @@ export async function chatCompletions(req: Request, res: Response) {
         res.end();
       }
 
+      const streamUsage = normalizeUsage(streamUsageRaw);
       if (streamUsage) {
-        console.log(`[Gateway:${requestId}] Stream usage captured: ${JSON.stringify(streamUsage)}`);
+        console.log(`[Gateway:${requestId}] Stream usage: prompt=${streamUsage.prompt_tokens}, completion=${streamUsage.completion_tokens}, total=${streamUsage.total_tokens}`);
       } else {
         console.log(`[Gateway:${requestId}] WARNING: No usage in stream chunks, falling back to estimation`);
       }
