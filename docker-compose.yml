@@ -9,6 +9,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./backend/dist:/app/backend/dist
+      - ./frontend/dist:/app/frontend/dist
     environment:
       - NODE_ENV=production
       - PORT=8088
