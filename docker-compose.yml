@@ -13,7 +13,7 @@ services:
       - ./frontend/dist:/app/frontend/dist
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=file:/app/data/app.db
+      - DATABASE_URL=file:/app/data/app.db?connection_limit=1
       - PORT=8088
       - JWT_SECRET=${JWT_SECRET:-llm-api-proxy-dev-secret-change-me}
       - JWT_EXPIRATION=${JWT_EXPIRATION:-24h}
