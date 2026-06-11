@@ -1,4 +1,5 @@
 import prisma from '../models/prisma.js';
+import { calculateCost } from '../config/pricing.js';
 
 interface ListQuery {
   userId?: number;
@@ -119,6 +120,8 @@ export async function getConversationStats() {
     yesterdayConversations, yesterdayTokensAgg,
     topUsers, modelUsage,
     recentRecords,
+    todayCostMessages,
+    yesterdayCostMessages,
   ] = await Promise.all([
     prisma.conversation.count(),
     prisma.conversation.aggregate({ _sum: { tokenCount: true } }),
@@ -161,6 +164,38 @@ export async function getConversationStats() {
         model: { select: MODEL_SELECT },
       },
     }),
+    // Fetch messages for today's cost calculation
+    prisma.message.findMany({
+      where: {
+        conversation: {
+          createTime: { gte: todayStart, lt: todayEnd },
+          modelId: { not: null },
+        },
+      },
+      select: {
+        role: true,
+        tokens: true,
+        conversation: {
+          select: { model: { select: { modelName: true } } },
+        },
+      },
+    }),
+    // Fetch messages for yesterday's cost calculation
+    prisma.message.findMany({
+      where: {
+        conversation: {
+          createTime: { gte: yesterdayStart, lt: todayStart },
+          modelId: { not: null },
+        },
+      },
+      select: {
+        role: true,
+        tokens: true,
+        conversation: {
+          select: { model: { select: { modelName: true } } },
+        },
+      },
+    }),
   ]);
 
   const userIds = topUsers.map(u => u.userId);
@@ -177,6 +212,9 @@ export async function getConversationStats() {
   });
   const modelMap = new Map(models.map(m => [m.id, m]));
 
+  const todayCost = computeDailyCost(todayCostMessages);
+  const yesterdayCost = computeDailyCost(yesterdayCostMessages);
+
   return {
     totalConversations,
     totalTokens: totalTokens._sum.tokenCount || 0,
@@ -185,6 +223,8 @@ export async function getConversationStats() {
     todayTokens: todayTokensAgg._sum.tokenCount || 0,
     yesterdayConversations,
     yesterdayTokens: yesterdayTokensAgg._sum.tokenCount || 0,
+    todayCost,
+    yesterdayCost,
     monthTokens: monthTokensAgg._sum.tokenCount || 0,
     activeUsersToday: activeUsersToday.length,
     topUsers: topUsers.map(u => ({
@@ -209,4 +249,32 @@ export async function getConversationStats() {
       createTime: c.createTime,
     })),
   };
+}
+
+// Aggregate message-level tokens by role → model, then compute cost per model
+function computeDailyCost(
+  messages: { role: string; tokens: number; conversation: { model: { modelName: string } | null } }[],
+): number {
+  const modelTokens: Record<string, { prompt: number; completion: number }> = {};
+
+  for (const msg of messages) {
+    const modelName = msg.conversation?.model?.modelName;
+    if (!modelName) continue;
+
+    if (!modelTokens[modelName]) {
+      modelTokens[modelName] = { prompt: 0, completion: 0 };
+    }
+
+    if (msg.role === 'user' || msg.role === 'system') {
+      modelTokens[modelName].prompt += msg.tokens;
+    } else if (msg.role === 'assistant') {
+      modelTokens[modelName].completion += msg.tokens;
+    }
+  }
+
+  let totalCost = 0;
+  for (const [modelName, tokens] of Object.entries(modelTokens)) {
+    totalCost += calculateCost(modelName, tokens.prompt, tokens.completion);
+  }
+  return Math.round(totalCost * 100) / 100;
 }

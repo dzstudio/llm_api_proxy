@@ -19,6 +19,12 @@ function formatTokens(n: number) {
   return String(n)
 }
 
+function formatCost(n: number): string {
+  if (n >= 100) return `¥${n.toFixed(0)}`
+  if (n >= 1) return `¥${n.toFixed(2)}`
+  return `¥${n.toFixed(4)}`
+}
+
 function formatFullDate(t: string) {
   if (!t) return '-'
   const d = new Date(t)
@@ -151,6 +157,20 @@ function getSliceOffset(i: number) {
         <div class="text-xs font-medium text-gray-500 mb-2">活跃员工</div>
         <div class="text-2xl font-bold text-gray-900">{{ convStats?.activeUsersToday ?? '--' }}</div>
         <div class="text-xs text-gray-400 mt-1">今日使用过 LLM</div>
+      </div>
+    </div>
+
+    <!-- Cost Cards -->
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-6">
+      <div class="bg-white border border-green-200 rounded-xl p-5 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 mb-2">今日预估费用</div>
+        <div class="text-2xl font-bold text-green-700">{{ convStats ? formatCost(convStats.todayCost) : '--' }}</div>
+        <div class="text-xs text-gray-400 mt-1">基于 {{ convStats?.todayTokens ? formatTokens(convStats.todayTokens) : '--' }} tokens 估算</div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-5 shadow-sm">
+        <div class="text-xs font-medium text-gray-500 mb-2">昨日预估费用</div>
+        <div class="text-2xl font-bold text-gray-900">{{ convStats ? formatCost(convStats.yesterdayCost) : '--' }}</div>
+        <div class="text-xs text-gray-400 mt-1">基于 {{ convStats?.yesterdayTokens ? formatTokens(convStats.yesterdayTokens) : '--' }} tokens 估算</div>
       </div>
     </div>
 
