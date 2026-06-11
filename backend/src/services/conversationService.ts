@@ -164,29 +164,33 @@ export async function getConversationStats() {
         model: { select: MODEL_SELECT },
       },
     }),
-    // Fetch conversations for today's cost calculation (using real API-reported tokenCount)
+    // Fetch conversations for today's cost calculation — find conversations that
+    // have messages today, and only count today's messages. Uses message-level
+    // createTime filtering so continuing conversations don't bleed into today.
     prisma.conversation.findMany({
-      where: { createTime: { gte: todayStart, lt: todayEnd }, modelId: { not: null } },
+      where: {
+        modelId: { not: null },
+        messages: { some: { createTime: { gte: todayStart, lt: todayEnd } } },
+      },
       select: {
-        id: true,
-        tokenCount: true,
         model: { select: { modelName: true } },
         messages: {
-          where: { role: 'assistant' },
-          select: { tokens: true },
+          where: { createTime: { gte: todayStart, lt: todayEnd } },
+          select: { role: true, tokens: true },
         },
       },
     }),
     // Fetch conversations for yesterday's cost calculation
     prisma.conversation.findMany({
-      where: { createTime: { gte: yesterdayStart, lt: todayStart }, modelId: { not: null } },
+      where: {
+        modelId: { not: null },
+        messages: { some: { createTime: { gte: yesterdayStart, lt: todayStart } } },
+      },
       select: {
-        id: true,
-        tokenCount: true,
         model: { select: { modelName: true } },
         messages: {
-          where: { role: 'assistant' },
-          select: { tokens: true },
+          where: { createTime: { gte: yesterdayStart, lt: todayStart } },
+          select: { role: true, tokens: true },
         },
       },
     }),
@@ -245,14 +249,14 @@ export async function getConversationStats() {
   };
 }
 
-// Compute cost using real API-reported tokenCount and assistant message tokens.
-// tokenCount = actual total tokens from API; sum(assistant.tokens) = actual completion_tokens.
-// Prompt tokens = tokenCount - completion (far more accurate than text-length estimates).
+// Compute daily cost from messages created on the target day.
+// Assistant message tokens are real API completion_tokens.
+// User message tokens are estimated (text.length/4) and represent new user input only
+// (not the full context re-sent each API call), so prompt cost will be conservative.
 function computeDailyCost(
   conversations: {
-    tokenCount: number;
     model: { modelName: string } | null;
-    messages: { tokens: number }[];
+    messages: { role: string; tokens: number }[];
   }[],
 ): number {
   const modelTokens: Record<string, { prompt: number; completion: number }> = {};
@@ -261,14 +265,21 @@ function computeDailyCost(
     const modelName = conv.model?.modelName;
     if (!modelName) continue;
 
-    const completionTokens = conv.messages.reduce((sum, m) => sum + m.tokens, 0);
-    const promptTokens = Math.max(0, conv.tokenCount - completionTokens);
+    let promptSum = 0;
+    let completionSum = 0;
+    for (const msg of conv.messages) {
+      if (msg.role === 'assistant') {
+        completionSum += msg.tokens;
+      } else if (msg.role === 'user') {
+        promptSum += msg.tokens;
+      }
+    }
 
     if (!modelTokens[modelName]) {
       modelTokens[modelName] = { prompt: 0, completion: 0 };
     }
-    modelTokens[modelName].prompt += promptTokens;
-    modelTokens[modelName].completion += completionTokens;
+    modelTokens[modelName].prompt += promptSum;
+    modelTokens[modelName].completion += completionSum;
   }
 
   let totalCost = 0;
