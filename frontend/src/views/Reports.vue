@@ -340,7 +340,7 @@ onMounted(fetchUsers)
                   <!-- User message -->
                   <div v-if="msg.role === 'user'" class="flex justify-end">
                     <div>
-                      <div class="max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-gray-100" style="border-radius:12px 12px 4px 12px;">
+                      <div class="max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-gray-100 break-all" style="border-radius:12px 12px 4px 12px;">
                         {{ msg.content }}
                       </div>
                       <div class="text-right text-xs text-gray-400 mt-1 mr-1">{{ formatFullDate(msg.createTime) }}</div>
@@ -354,7 +354,7 @@ onMounted(fetchUsers)
                       </svg>
                     </div>
                     <div>
-                      <div class="flex-1 max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-white border border-gray-200" style="border-radius:12px 12px 12px 4px;">
+                      <div class="flex-1 max-w-2xl px-4 py-3 rounded-xl text-sm text-gray-800 leading-relaxed bg-white border border-gray-200 break-all" style="border-radius:12px 12px 12px 4px;">
                         <div v-html="msg.content.replace(/\n/g, '<br>')" />
                       </div>
                       <div class="text-xs text-gray-400 mt-1 ml-2">{{ formatFullDate(msg.createTime) }}</div>

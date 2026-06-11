@@ -360,7 +360,7 @@ onMounted(() => {
                 </span>
                 <span class="text-xs text-slate-400">{{ formatTokens(msg.tokens) }} tokens</span>
               </div>
-              <pre class="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700 font-sans">{{ msg.content }}</pre>
+              <pre class="whitespace-pre-wrap break-all text-sm leading-relaxed text-slate-700 font-sans">{{ msg.content }}</pre>
             </div>
           </div>
 
