@@ -1,5 +1,5 @@
 # Stage 1: Build frontend
-FROM node:22-alpine AS frontend-build
+FROM node:22-slim AS frontend-build
 WORKDIR /build/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,7 +7,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # Stage 2: Build backend
-FROM node:22-alpine AS backend-build
+FROM node:22-slim AS backend-build
 WORKDIR /build/backend
 COPY backend/package*.json ./
 RUN npm ci
@@ -16,7 +16,7 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 3: Production
-FROM node:22-alpine
+FROM node:22-slim
 WORKDIR /app/backend
 
 # Install production deps only (no typescript, tsx, prisma CLI, etc.)
