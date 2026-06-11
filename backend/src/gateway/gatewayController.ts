@@ -160,7 +160,7 @@ export async function chatCompletions(req: Request, res: Response) {
       }
 
       if (streamUsage) {
-        console.log(`[Gateway:${requestId}] Stream usage captured: prompt=${streamUsage.prompt_tokens}, completion=${streamUsage.completion_tokens}, total=${streamUsage.total_tokens}`);
+        console.log(`[Gateway:${requestId}] Stream usage captured: ${JSON.stringify(streamUsage)}`);
       } else {
         console.log(`[Gateway:${requestId}] WARNING: No usage in stream chunks, falling back to estimation`);
       }
