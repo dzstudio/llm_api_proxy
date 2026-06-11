@@ -107,7 +107,8 @@ export async function forwardToProvider(model: any, body: any) {
   }
 }
 
-// Extract plain text from content that may be a string or an array of content blocks
+// Extract plain text from content that may be a string or an array of content blocks.
+// Skips tool_result blocks (they carry file contents / source code, not user prompts).
 function extractTextContent(content: any): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -119,20 +120,29 @@ function extractTextContent(content: any): string {
   return String(content || '');
 }
 
-// Claude Code wraps user prompts with these system XML tags — strip them
+// Claude Code wraps system-injected content in these XML tags.
+// We strip them so only real user-entered prompts remain.
 const SYSTEM_TAGS = [
   'system-reminder',
   'command-name',
   'command-message',
+  'command-args',
   'user-prompt-submit-hook',
   'task-notification',
+  'local-command-caveat',
+  'local-command-stdout',
+  'bash-input',
+  'bash-stdout',
+  'bash-stderr',
 ];
 
 function cleanUserPrompt(content: string): string {
   let result = content;
   for (const tag of SYSTEM_TAGS) {
-    // Fully enclosed tags: <tag>...</tag>
+    // Fully enclosed tags: <tag>...</tag>, <tag attr="...">...</tag>, <tag />
     result = result.replace(new RegExp(`<${tag}[^>]*>[\\s\\S]*?<\\/${tag}>`, 'g'), '');
+    // Self-closing form: <tag />
+    result = result.replace(new RegExp(`<${tag}[^>]*\/>`, 'g'), '');
   }
   // Unclosed <system-reminder> that runs to end of string
   result = result.replace(/<system-reminder>[\s\S]*$/g, '');
@@ -200,8 +210,14 @@ export async function logConversation(
   // Only log cleaned user messages (skip system/tool/assistant messages from provider request)
   let newUserMsgCount = 0;
   for (const msg of userMessages) {
-    const cleaned = cleanUserPrompt(extractTextContent(msg.content));
+    const rawText = extractTextContent(msg.content);
+    // Skip tool_result messages (they carry file contents / source code)
+    if (!rawText) continue;
+    const cleaned = cleanUserPrompt(rawText);
     if (!cleaned || existingContents.has(cleaned)) continue;
+    // Safety net: skip messages that are clearly tool output / source code
+    // (unusually long content that wasn't caught by tag stripping)
+    if (cleaned.length > 2000) continue;
     newUserMsgCount++;
     existingContents.add(cleaned); // Track in-memory to avoid dupes within same batch
     await prisma.message.create({
