@@ -40,6 +40,7 @@ export async function login(input: LoginInput) {
   });
 
   return {
+    id: user.id,
     token,
     username: user.username,
     realName: user.realName || '',

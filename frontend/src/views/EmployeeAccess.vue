@@ -36,10 +36,8 @@ async function fetchData() {
       models.value = modelRes.data.data.list
     }
     if (keyRes?.data?.code === 0) {
-      const allKeys = Array.isArray(keyRes.data.data) ? keyRes.data.data : keyRes.data.data.list
-      if (allKeys) {
-        apiKeys.value = allKeys.filter((k: ApiKeyItem) => k.userId === userInfo.value?.id)
-      }
+      // Backend already filters by userId for non-admins, so we can use the list directly
+      apiKeys.value = keyRes.data.data.list || []
     }
   } finally {
     loading.value = false
