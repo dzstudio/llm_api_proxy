@@ -92,6 +92,7 @@ export async function chatCompletions(req: Request, res: Response) {
       const decoder = new TextDecoder();
       let fullContent = '';
       let buffer = '';
+      let streamUsage: any = null; // Capture usage from final streaming chunk
 
       req.on('close', () => {
         if (!res.writableEnded) {
@@ -117,6 +118,8 @@ export async function chatCompletions(req: Request, res: Response) {
                 const json = JSON.parse(line.substring(6));
                 const content = json.choices?.[0]?.delta?.content;
                 if (content) fullContent += content;
+                // DeepSeek (OpenAI-compatible) streaming: last chunk includes usage
+                if (json.usage) streamUsage = json.usage;
               } catch { /* skip */ }
             }
             // Anthropic format: data: {"type":"content_block_delta","delta":{"text":"..."}}
@@ -125,6 +128,7 @@ export async function chatCompletions(req: Request, res: Response) {
                 const json = JSON.parse(line.substring(6));
                 const text = json.delta?.text;
                 if (text) fullContent += text;
+                if (json.usage) streamUsage = json.usage;
               } catch { /* skip */ }
             }
           }
@@ -137,8 +141,28 @@ export async function chatCompletions(req: Request, res: Response) {
         reader.releaseLock();
       }
 
+      // Process leftover buffer after stream ends (may contain usage data)
+      if (buffer.trim()) {
+        for (const line of buffer.split('\n')) {
+          if (line.startsWith('data: ') && !line.startsWith('data: [DONE]')) {
+            try {
+              const json = JSON.parse(line.substring(6));
+              const content = json.choices?.[0]?.delta?.content;
+              if (content) fullContent += content;
+              if (json.usage) streamUsage = json.usage;
+            } catch { /* skip */ }
+          }
+        }
+      }
+
       if (!res.writableEnded) {
         res.end();
+      }
+
+      if (streamUsage) {
+        console.log(`[Gateway:${requestId}] Stream usage captured: prompt=${streamUsage.prompt_tokens}, completion=${streamUsage.completion_tokens}, total=${streamUsage.total_tokens}`);
+      } else {
+        console.log(`[Gateway:${requestId}] WARNING: No usage in stream chunks, falling back to estimation`);
       }
 
       gatewayService.logConversation(
@@ -147,7 +171,7 @@ export async function chatCompletions(req: Request, res: Response) {
         req.body.session_id,
         messages,
         fullContent,
-        null,
+        streamUsage,
       ).catch(err => console.error('[Gateway] Failed to log conversation:', err));
     } else {
       const data = await response.json() as any;
