@@ -120,8 +120,8 @@ export async function getConversationStats() {
     yesterdayConversations, yesterdayTokensAgg,
     topUsers, modelUsage,
     recentRecords,
-    todayCostMessages,
-    yesterdayCostMessages,
+    todayCostConvs,
+    yesterdayCostConvs,
   ] = await Promise.all([
     prisma.conversation.count(),
     prisma.conversation.aggregate({ _sum: { tokenCount: true } }),
@@ -164,35 +164,29 @@ export async function getConversationStats() {
         model: { select: MODEL_SELECT },
       },
     }),
-    // Fetch messages for today's cost calculation
-    prisma.message.findMany({
-      where: {
-        conversation: {
-          createTime: { gte: todayStart, lt: todayEnd },
-          modelId: { not: null },
-        },
-      },
+    // Fetch conversations for today's cost calculation (using real API-reported tokenCount)
+    prisma.conversation.findMany({
+      where: { createTime: { gte: todayStart, lt: todayEnd }, modelId: { not: null } },
       select: {
-        role: true,
-        tokens: true,
-        conversation: {
-          select: { model: { select: { modelName: true } } },
+        id: true,
+        tokenCount: true,
+        model: { select: { modelName: true } },
+        messages: {
+          where: { role: 'assistant' },
+          select: { tokens: true },
         },
       },
     }),
-    // Fetch messages for yesterday's cost calculation
-    prisma.message.findMany({
-      where: {
-        conversation: {
-          createTime: { gte: yesterdayStart, lt: todayStart },
-          modelId: { not: null },
-        },
-      },
+    // Fetch conversations for yesterday's cost calculation
+    prisma.conversation.findMany({
+      where: { createTime: { gte: yesterdayStart, lt: todayStart }, modelId: { not: null } },
       select: {
-        role: true,
-        tokens: true,
-        conversation: {
-          select: { model: { select: { modelName: true } } },
+        id: true,
+        tokenCount: true,
+        model: { select: { modelName: true } },
+        messages: {
+          where: { role: 'assistant' },
+          select: { tokens: true },
         },
       },
     }),
@@ -212,8 +206,8 @@ export async function getConversationStats() {
   });
   const modelMap = new Map(models.map(m => [m.id, m]));
 
-  const todayCost = computeDailyCost(todayCostMessages);
-  const yesterdayCost = computeDailyCost(yesterdayCostMessages);
+  const todayCost = computeDailyCost(todayCostConvs);
+  const yesterdayCost = computeDailyCost(yesterdayCostConvs);
 
   return {
     totalConversations,
@@ -251,25 +245,30 @@ export async function getConversationStats() {
   };
 }
 
-// Aggregate message-level tokens by role → model, then compute cost per model
+// Compute cost using real API-reported tokenCount and assistant message tokens.
+// tokenCount = actual total tokens from API; sum(assistant.tokens) = actual completion_tokens.
+// Prompt tokens = tokenCount - completion (far more accurate than text-length estimates).
 function computeDailyCost(
-  messages: { role: string; tokens: number; conversation: { model: { modelName: string } | null } }[],
+  conversations: {
+    tokenCount: number;
+    model: { modelName: string } | null;
+    messages: { tokens: number }[];
+  }[],
 ): number {
   const modelTokens: Record<string, { prompt: number; completion: number }> = {};
 
-  for (const msg of messages) {
-    const modelName = msg.conversation?.model?.modelName;
+  for (const conv of conversations) {
+    const modelName = conv.model?.modelName;
     if (!modelName) continue;
+
+    const completionTokens = conv.messages.reduce((sum, m) => sum + m.tokens, 0);
+    const promptTokens = Math.max(0, conv.tokenCount - completionTokens);
 
     if (!modelTokens[modelName]) {
       modelTokens[modelName] = { prompt: 0, completion: 0 };
     }
-
-    if (msg.role === 'user' || msg.role === 'system') {
-      modelTokens[modelName].prompt += msg.tokens;
-    } else if (msg.role === 'assistant') {
-      modelTokens[modelName].completion += msg.tokens;
-    }
+    modelTokens[modelName].prompt += promptTokens;
+    modelTokens[modelName].completion += completionTokens;
   }
 
   let totalCost = 0;

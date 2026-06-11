@@ -20,9 +20,8 @@ function formatTokens(n: number) {
 }
 
 function formatCost(n: number): string {
-  if (n >= 100) return `¥${n.toFixed(0)}`
-  if (n >= 1) return `¥${n.toFixed(2)}`
-  return `¥${n.toFixed(4)}`
+  if (n >= 100) return `¥${n.toFixed(0)} 元`
+  return `¥${n.toFixed(2)} 元`
 }
 
 function formatFullDate(t: string) {
