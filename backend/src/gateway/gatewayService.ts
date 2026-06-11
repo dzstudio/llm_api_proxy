@@ -176,11 +176,31 @@ export async function logConversation(
     console.log(`[Gateway:logConversation] Auto-generated sessionId: ${sessionId}`);
   }
 
+  // Auto-split long sessions into 30-minute time windows to avoid one giant
+  // conversation accumulating hundreds of messages and causing SQLite write pressure.
+  const WINDOW_MS = 30 * 60 * 1000;
   let conversation;
   if (sessionId) {
     conversation = await prisma.conversation.findFirst({
       where: { sessionId, userId },
+      orderBy: { updateTime: 'desc' },
     });
+
+    if (conversation) {
+      const age = Date.now() - new Date(conversation.updateTime).getTime();
+      if (age > WINDOW_MS) {
+        const windowKey = Math.floor(Date.now() / WINDOW_MS);
+        const timedSessionId = `${sessionId}-w${windowKey}`;
+        console.log(`[Gateway:logConversation] Time window: ${timedSessionId}`);
+        conversation = await prisma.conversation.findFirst({
+          where: { sessionId: timedSessionId, userId },
+          orderBy: { updateTime: 'desc' },
+        });
+        if (!conversation) {
+          sessionId = timedSessionId;
+        }
+      }
+    }
   }
 
   if (!conversation) {
@@ -196,30 +216,33 @@ export async function logConversation(
     });
   }
 
-  // Dedup: fetch existing user message contents to avoid re-logging duplicates
-  // (Claude Code re-sends full conversation history on every request)
+  // Dedup: fetch recent existing user messages to avoid re-logging duplicates.
+  // Claude Code re-sends full history (200-300 msgs), so limit to last 200.
   const existingContents = new Set(
     conversation.id
       ? (await prisma.message.findMany({
           where: { conversationId: conversation.id, role: 'user' },
           select: { content: true },
+          orderBy: { id: 'desc' },
+          take: 200,
         })).map((m: { content: string | null }) => m.content)
       : [],
   );
 
-  // Only log cleaned user messages (skip system/tool/assistant messages from provider request)
+  // Only process the last 20 user messages per batch.
+  // Claude Code sends full history, but only the newest messages need logging.
+  const MAX_BATCH = 20;
+  const messagesToProcess = userMessages.slice(-MAX_BATCH);
+
   let newUserMsgCount = 0;
-  for (const msg of userMessages) {
+  for (const msg of messagesToProcess) {
     const rawText = extractTextContent(msg.content);
-    // Skip tool_result messages (they carry file contents / source code)
     if (!rawText) continue;
     const cleaned = cleanUserPrompt(rawText);
     if (!cleaned || existingContents.has(cleaned)) continue;
-    // Safety net: skip messages that are clearly tool output / source code
-    // (unusually long content that wasn't caught by tag stripping)
     if (cleaned.length > 2000) continue;
     newUserMsgCount++;
-    existingContents.add(cleaned); // Track in-memory to avoid dupes within same batch
+    existingContents.add(cleaned);
     await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -245,7 +268,6 @@ export async function logConversation(
 
   const loggedMsgCount = newUserMsgCount + (assistantContent ? 1 : 0);
 
-  // If nothing was actually logged (all user messages filtered out, no assistant content), remove empty conversation
   if (loggedMsgCount === 0) {
     await prisma.conversation.delete({ where: { id: conversation.id } }).catch(() => {});
     return;
