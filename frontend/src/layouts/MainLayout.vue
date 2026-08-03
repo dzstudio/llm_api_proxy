@@ -152,7 +152,7 @@ const iconPaths: Record<string, string> = {
       <header class="sticky top-0 z-20 flex items-center justify-between px-8 border-b border-gray-200" style="background:rgba(255,255,255,0.92); backdrop-filter:blur(12px); height:64px;">
         <div class="text-sm font-semibold text-gray-900">{{ pageTitle }}</div>
         <div class="flex items-center gap-3">
-          <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md">v1.0.0</span>
+          <span class="text-xs text-gray-400 bg-gray-100 px-2 py-1 rounded-md">v1.1.0</span>
           <button class="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 0 1-3.46 0"/>
