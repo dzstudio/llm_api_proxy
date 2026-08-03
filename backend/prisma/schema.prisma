@@ -39,6 +39,7 @@ model SysApiKey {
 
   user SysUser @relation(fields: [userId], references: [id])
 
+  @@index([userId])
   @@map("sys_api_key")
 }
 
@@ -90,6 +91,9 @@ model Conversation {
   messages Message[]
   reviews  PromptReview[]
 
+  @@index([sessionId, userId])
+  @@index([userId, createTime])
+  @@index([modelId])
   @@map("conversation")
 }
 
@@ -104,6 +108,7 @@ model Message {
 
   conversation Conversation @relation(fields: [conversationId], references: [id])
 
+  @@index([conversationId, role])
   @@map("message")
 }
 
@@ -120,6 +125,7 @@ model DailyReport {
 
   user SysUser @relation(fields: [userId], references: [id])
 
+  @@index([userId, reportDate])
   @@map("daily_report")
 }
 
@@ -136,5 +142,6 @@ model PromptReview {
   conversation Conversation @relation(fields: [conversationId], references: [id])
   reviewModel  SysModel?   @relation(fields: [reviewModelId], references: [id])
 
+  @@index([conversationId])
   @@map("prompt_review")
 }

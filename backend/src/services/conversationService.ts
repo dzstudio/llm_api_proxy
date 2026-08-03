@@ -1,6 +1,15 @@
 import prisma from '../models/prisma.js';
 import { calculateCost } from '../config/pricing.js';
 
+// 简单的内存缓存，用于 Dashboard 统计数据
+interface StatsCache {
+  data: any;
+  timestamp: number;
+}
+
+let statsCache: StatsCache | null = null;
+const STATS_CACHE_TTL = 30 * 1000; // 30秒缓存
+
 interface ListQuery {
   userId?: number;
   modelId?: number;
@@ -106,6 +115,13 @@ export async function getConversationDetail(id: number) {
 }
 
 export async function getConversationStats() {
+  // 检查缓存是否有效
+  if (statsCache && Date.now() - statsCache.timestamp < STATS_CACHE_TTL) {
+    console.log('[Stats] Returning cached stats');
+    return statsCache.data;
+  }
+
+  console.log('[Stats] Cache miss, fetching fresh data');
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const todayEnd = new Date(todayStart);
@@ -247,6 +263,15 @@ export async function getConversationStats() {
       createTime: c.createTime,
     })),
   };
+
+  // 更新缓存
+  statsCache = {
+    data: result,
+    timestamp: Date.now(),
+  };
+  console.log('[Stats] Cache updated');
+
+  return result;
 }
 
 // Compute daily cost from messages created on the target day.

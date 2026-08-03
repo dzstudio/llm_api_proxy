@@ -217,14 +217,14 @@ export async function logConversation(
   }
 
   // Dedup: fetch recent existing user messages to avoid re-logging duplicates.
-  // Claude Code re-sends full history (200-300 msgs), so limit to last 200.
+  // Optimized: only fetch last 50 messages (reduced from 200) for dedup check
   const existingContents = new Set(
     conversation.id
       ? (await prisma.message.findMany({
           where: { conversationId: conversation.id, role: 'user' },
           select: { content: true },
           orderBy: { id: 'desc' },
-          take: 200,
+          take: 50,
         })).map((m: { content: string | null }) => m.content)
       : [],
   );
@@ -234,51 +234,63 @@ export async function logConversation(
   const MAX_BATCH = 20;
   const messagesToProcess = userMessages.slice(-MAX_BATCH);
 
-  let newUserMsgCount = 0;
+  // Prepare batch insert data for user messages
+  const newUserMessages: { conversationId: number; role: string; content: string; tokens: number }[] = [];
   for (const msg of messagesToProcess) {
     const rawText = extractTextContent(msg.content);
     if (!rawText) continue;
     const cleaned = cleanUserPrompt(rawText);
     if (!cleaned || existingContents.has(cleaned)) continue;
     if (cleaned.length > 2000) continue;
-    newUserMsgCount++;
     existingContents.add(cleaned);
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'user',
-        content: cleaned,
-        tokens: estimateTokens(cleaned),
-      },
+    newUserMessages.push({
+      conversationId: conversation.id,
+      role: 'user',
+      content: cleaned,
+      tokens: estimateTokens(cleaned),
     });
   }
 
-  // Log assistant response
-  if (assistantContent) {
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        role: 'assistant',
-        content: assistantContent.length > 8192 ? assistantContent.slice(0, 8192) + '…[已截取]' : assistantContent,
-        tokens: completionTokens,
-        promptTokens: usage?.prompt_tokens || null,
-      },
-    });
-  }
+  // Prepare assistant message data
+  const assistantMessage = assistantContent ? {
+    conversationId: conversation.id,
+    role: 'assistant',
+    content: assistantContent.length > 8192 ? assistantContent.slice(0, 8192) + '…[已截取]' : assistantContent,
+    tokens: completionTokens,
+    promptTokens: usage?.prompt_tokens || null,
+  } : null;
 
-  const loggedMsgCount = newUserMsgCount + (assistantContent ? 1 : 0);
+  const loggedMsgCount = newUserMessages.length + (assistantMessage ? 1 : 0);
 
   if (loggedMsgCount === 0) {
     await prisma.conversation.delete({ where: { id: conversation.id } }).catch(() => {});
     return;
   }
 
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: {
-      tokenCount: conversation.tokenCount + totalTokens,
-      messageCount: conversation.messageCount + loggedMsgCount,
-      title: conversation.title || title,
-    },
+  // Use transaction for batch insert - much faster than individual inserts
+  await prisma.$transaction(async (tx) => {
+    // Batch insert user messages
+    if (newUserMessages.length > 0) {
+      await tx.message.createMany({
+        data: newUserMessages,
+      });
+    }
+
+    // Insert assistant message
+    if (assistantMessage) {
+      await tx.message.create({
+        data: assistantMessage as any,
+      });
+    }
+
+    // Update conversation counters
+    await tx.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        tokenCount: conversation.tokenCount + totalTokens,
+        messageCount: conversation.messageCount + loggedMsgCount,
+        title: conversation.title || title,
+      },
+    });
   });
 }
