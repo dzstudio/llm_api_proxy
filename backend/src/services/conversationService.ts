@@ -229,7 +229,7 @@ export async function getConversationStats() {
   const todayCost = computeDailyCost(todayCostConvs);
   const yesterdayCost = computeDailyCost(yesterdayCostConvs);
 
-  return {
+  const statsResult = {
     totalConversations,
     totalTokens: totalTokens._sum.tokenCount || 0,
     totalMessages: totalMessages._sum.messageCount || 0,
@@ -266,12 +266,12 @@ export async function getConversationStats() {
 
   // 更新缓存
   statsCache = {
-    data: result,
+    data: statsResult,
     timestamp: Date.now(),
   };
   console.log('[Stats] Cache updated');
 
-  return result;
+  return statsResult;
 }
 
 // Compute daily cost from messages created on the target day.
