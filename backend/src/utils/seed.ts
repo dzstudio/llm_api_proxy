@@ -20,6 +20,6 @@ export async function seedAdmin() {
         status: 1,
       },
     });
-    console.log('[Seed] Admin user created (admin / welcome123)');
+    console.log(`[Seed] Admin user "${config.admin.username}" created. Please change the default password on first login.`);
   }
 }
